@@ -7,7 +7,9 @@ export function buildSandboxServer(config: SandboxConfig = loadSandboxConfig()):
 
   app.get('/healthz', async () => ({
     environment: config.nodeEnv,
+    runtimeMode: config.runtimeMode,
     service: config.serviceName,
+    sharedCloudConfigured: config.sharedCloud != null,
     status: 'ok',
   }));
 

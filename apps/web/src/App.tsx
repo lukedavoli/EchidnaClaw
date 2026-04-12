@@ -6,11 +6,11 @@ export function App() {
   return (
     <main className="app-shell">
       <section className="hero">
-        <p className="eyebrow">Step 1 baseline</p>
+        <p className="eyebrow">Step 4 workflows</p>
         <h1>{config.appTitle}</h1>
         <p className="lede">
-          The control plane shell is running with a shared workspace, typed config, and minimal
-          service scaffolds for the API, hands worker, and sandbox.
+          The control plane shell is running with the local process loop, smoke checks, Compose
+          integration, and deployment scaffolding that later feature work will rely on.
         </p>
       </section>
       <section className="facts">
@@ -19,8 +19,18 @@ export function App() {
           <code>{config.apiBaseUrl}</code>
         </article>
         <article>
-          <h2>Workspace status</h2>
-          <p>Foundation scaffolding complete. Step 2 can now define real domain contracts.</p>
+          <h2>App base URL</h2>
+          <code>{config.appBaseUrl}</code>
+        </article>
+        <article>
+          <h2>Runtime mode</h2>
+          <p>{config.runtimeMode}</p>
+        </article>
+        <article>
+          <h2>Workflow status</h2>
+          <p>
+            Developer startup, verification, packaging, and branch deployment policies are wired.
+          </p>
         </article>
       </section>
     </main>

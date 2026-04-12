@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -b tsconfig.json",
     "clean": "rimraf dist .tsbuildinfo coverage",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint .",

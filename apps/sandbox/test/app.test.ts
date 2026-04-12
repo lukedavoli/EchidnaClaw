@@ -15,7 +15,10 @@ describe('buildSandboxServer', () => {
       logLevel: 'info',
       nodeEnv: 'test',
       port: 3002,
+      runtimeMode: 'local-minimal',
       serviceName: 'sandbox',
+      sharedCloud: null,
+      webPublicBaseUrl: 'http://127.0.0.1:5173',
     });
 
     apps.push(app);
@@ -25,7 +28,9 @@ describe('buildSandboxServer', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       environment: 'test',
+      runtimeMode: 'local-minimal',
       service: 'sandbox',
+      sharedCloudConfigured: false,
       status: 'ok',
     });
   });

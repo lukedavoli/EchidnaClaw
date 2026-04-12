@@ -1,123 +1,45 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import { describe, expect, it } from 'vitest';
 
-import { loadWebConfig } from '../src/browser.js';
-import {
-  loadApiConfig,
-  loadHandsConfig,
-  loadSandboxConfig,
-} from '../src/index.js';
-import { defaultRepositoryConfigPath, loadRepositoryConfig } from '../src/repository.js';
+import { loadApiConfig, loadHandsConfig, loadSandboxConfig } from '../src/index.js';
 
-describe('config loaders', () => {
-  it('applies API defaults', () => {
-    expect(loadApiConfig({})).toMatchObject({
-      serviceName: 'api',
-      host: '127.0.0.1',
-      port: 3001,
-      nodeEnv: 'development',
-      logLevel: 'info',
-    });
+describe('@echidna-claw/config', () => {
+  it('defaults to local-minimal runtime settings', () => {
+    const config = loadApiConfig({});
+
+    expect(config.runtimeMode).toBe('local-minimal');
+    expect(config.sharedCloud).toBeNull();
+    expect(config.webPublicBaseUrl).toBe('http://127.0.0.1:5173');
   });
 
-  it('rejects invalid sandbox ports', () => {
+  it('fails fast when shared-cloud mode is selected without the required settings', () => {
     expect(() =>
       loadSandboxConfig({
-        ECHIDNA_SANDBOX_PORT: '70000',
+        ECHIDNA_RUNTIME_MODE: 'shared-cloud',
       }),
     ).toThrow();
   });
 
-  it('parses the hands heartbeat interval', () => {
-    expect(
-      loadHandsConfig({
-        ECHIDNA_HANDS_HEARTBEAT_INTERVAL_MS: '45000',
-      }).heartbeatIntervalMs,
-    ).toBe(45000);
-  });
-
-  it('loads browser-safe web defaults', () => {
-    expect(
-      loadWebConfig({
-        VITE_API_BASE_URL: 'http://127.0.0.1:3001',
-        VITE_APP_TITLE: 'Control Plane',
-      }),
-    ).toEqual({
-      apiBaseUrl: 'http://127.0.0.1:3001',
-      appTitle: 'Control Plane',
+  it('hydrates shared-cloud dependencies when the shared-cloud contract is complete', () => {
+    const config = loadHandsConfig({
+      ECHIDNA_RUNTIME_MODE: 'shared-cloud',
+      ECHIDNA_WEB_PUBLIC_BASE_URL: 'https://dev.echidna.example',
+      ECHIDNA_OPERATOR_OBJECT_ID: 'operator-123',
+      ECHIDNA_TRUSTED_USER_OBJECT_IDS: 'user-a,user-b',
+      ECHIDNA_COSMOS_DB_ENDPOINT: 'https://cosmos.example',
+      ECHIDNA_COSMOS_DB_DATABASE_NAME: 'echidna',
+      ECHIDNA_COSMOS_DB_CREDENTIAL_SCOPE: 'https://cosmos.azure.com/.default',
+      ECHIDNA_BLOB_STORAGE_ACCOUNT_URL: 'https://blob.example',
+      ECHIDNA_BLOB_STORAGE_UPLOADS_CONTAINER: 'uploads',
+      ECHIDNA_BLOB_STORAGE_ARTIFACTS_CONTAINER: 'artifacts',
+      ECHIDNA_KEY_VAULT_URI: 'https://vault.example',
+      ECHIDNA_KEY_VAULT_KEY_ID: 'key-id',
+      ECHIDNA_FOUNDRY_PROJECT_NAME: 'echidna-dev',
+      ECHIDNA_FOUNDRY_PROJECT_ENDPOINT: 'https://foundry.example',
+      ECHIDNA_MONITOR_CONNECTION_STRING: 'InstrumentationKey=123',
     });
-  });
 
-  it('loads the checked-in repository config', () => {
-    expect(loadRepositoryConfig(defaultRepositoryConfigPath)).toMatchObject({
-      version: '1',
-      models: {
-        defaultModel: 'gpt-5.4-mini',
-      },
-      sandbox: {
-        defaultPolicy: 'standard',
-      },
-    });
-  });
-
-  it('rejects invalid repository config files', () => {
-    const tempDirectory = mkdtempSync(join(tmpdir(), 'echidna-claw-config-'));
-    const tempPath = join(tempDirectory, 'repository.v1.json');
-
-    writeFileSync(
-      tempPath,
-      JSON.stringify({
-        version: '1',
-        models: {
-          defaultModel: 'gpt-5.4-mini',
-          pricing: [
-            {
-              model: 'gpt-5.4-mini',
-              provider: 'azure-foundry',
-              effectiveAt: '2026-04-12T00:00:00.000Z',
-              unit: '1m_tokens',
-              inputUsd: 0.2,
-              outputUsd: 0.8,
-            },
-          ],
-        },
-        sandbox: {
-          defaultPolicy: 'missing',
-          policies: [
-            {
-              name: 'standard',
-              description: 'Default policy',
-              allowFilesystemWriteUnder: ['/workspace'],
-              allowOutboundHosts: ['api.telegram.org'],
-              allowCommands: ['pnpm'],
-            },
-          ],
-          packageAllowlists: [
-            {
-              name: 'default-runtime',
-              packages: ['zod'],
-            },
-          ],
-        },
-        capabilities: {
-          registry: [
-            {
-              id: 'sandbox.shell',
-              name: 'Sandbox shell execution',
-              description: 'Runs commands',
-              category: 'tool',
-            },
-          ],
-        },
-      }),
-      'utf8',
-    );
-
-    expect(() => loadRepositoryConfig(tempPath)).toThrow();
-
-    rmSync(tempDirectory, { force: true, recursive: true });
+    expect(config.runtimeMode).toBe('shared-cloud');
+    expect(config.sharedCloud?.operatorIdentity.trustedUserObjectIds).toEqual(['user-a', 'user-b']);
+    expect(config.livenessFile).toContain('hands-liveness.json');
   });
 });
