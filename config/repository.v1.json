@@ -1,0 +1,80 @@
+{
+  "version": "1",
+  "models": {
+    "defaultModel": "gpt-5.4-mini",
+    "pricing": [
+      {
+        "model": "gpt-5.4-mini",
+        "provider": "azure-foundry",
+        "effectiveAt": "2026-04-12T00:00:00.000Z",
+        "unit": "1m_tokens",
+        "inputUsd": 0.2,
+        "outputUsd": 0.8
+      }
+    ]
+  },
+  "sandbox": {
+    "defaultPolicy": "standard",
+    "policies": [
+      {
+        "name": "standard",
+        "description": "Default v1 sandbox policy for trusted shell execution under bounded workspace rules.",
+        "allowFilesystemWriteUnder": [
+          "/workspace",
+          "/tmp"
+        ],
+        "allowOutboundHosts": [
+          "api.telegram.org",
+          "management.azure.com",
+          "login.microsoftonline.com",
+          "*.openai.azure.com"
+        ],
+        "allowCommands": [
+          "az",
+          "bash",
+          "curl",
+          "git",
+          "node",
+          "npm",
+          "npx",
+          "pnpm",
+          "pwsh",
+          "python",
+          "python3",
+          "sh"
+        ]
+      }
+    ],
+    "packageAllowlists": [
+      {
+        "name": "default-runtime",
+        "packages": [
+          "@azure/*",
+          "dotenv",
+          "fastify",
+          "react",
+          "react-dom",
+          "tsx",
+          "vitest",
+          "zod"
+        ]
+      }
+    ]
+  },
+  "capabilities": {
+    "registry": [
+      {
+        "id": "telegram.messaging",
+        "name": "Telegram direct messaging",
+        "description": "Sends and receives Telegram direct-message traffic for agent-bound channel identities.",
+        "category": "channel"
+      },
+      {
+        "id": "sandbox.shell",
+        "name": "Sandbox shell execution",
+        "description": "Runs terminal-like commands inside the sandbox service under repository-defined policy guardrails.",
+        "category": "tool"
+      }
+    ]
+  }
+}

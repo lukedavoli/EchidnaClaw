@@ -6,6 +6,11 @@
     "outDir": "./dist",
     "tsBuildInfoFile": "./.tsbuildinfo"
   },
+  "references": [
+    {
+      "path": "../../packages/config"
+    }
+  ],
   "include": [
     "src/**/*.ts"
   ],
@@ -14,4 +19,3 @@
     "node_modules"
   ]
 }
-

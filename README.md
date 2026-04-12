@@ -15,11 +15,16 @@ EchidnaClaw is a TypeScript monorepo for the v1 control plane, backend, worker, 
 - `apps/api` contains the API service shell.
 - `apps/hands` contains the background worker shell.
 - `apps/sandbox` contains the sandbox service shell.
-- `packages/config` contains typed environment loading.
-- `packages/*` contains shared placeholder libraries for later steps.
+- `packages/contracts` contains shared schemas, correlation metadata, and service contracts.
+- `packages/domain` contains shared state machines and domain invariants.
+- `packages/config` contains typed environment loading plus the checked-in repository config loader.
 - `infra/` contains infrastructure placeholders and future Bicep modules.
 - `scripts/` contains repository automation scripts.
 
 ## Step 1 Baseline
 
 Step 1 establishes a runnable, testable engineering baseline. It intentionally stops short of Step 2 domain contracts and any Azure integration logic.
+
+## Step 2 Shared Contracts
+
+Step 2 adds the shared domain schemas, lifecycle state machines, correlation metadata, and versioned repository config that later API, Hands, scheduler, sandbox, and UI work will build against.

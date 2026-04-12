@@ -101,6 +101,9 @@ importers:
 
   packages/config:
     dependencies:
+      '@echidna-claw/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -108,9 +111,17 @@ importers:
         specifier: ^3.24.2
         version: 3.25.76
 
-  packages/contracts: {}
+  packages/contracts:
+    dependencies:
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
 
-  packages/domain: {}
+  packages/domain:
+    dependencies:
+      '@echidna-claw/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/observability: {}
 

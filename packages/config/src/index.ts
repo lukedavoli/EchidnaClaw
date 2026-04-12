@@ -5,6 +5,8 @@ import { dirname, resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 
+export { defaultRepositoryConfigPath, loadRepositoryConfig } from './repository.js';
+
 const nodeEnvSchema = z.enum(['development', 'test', 'production']);
 const logLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
 

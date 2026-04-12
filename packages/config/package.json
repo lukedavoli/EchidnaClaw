@@ -25,6 +25,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@echidna-claw/contracts": "workspace:*",
     "dotenv": "^16.4.7",
     "zod": "^3.24.2"
   }
