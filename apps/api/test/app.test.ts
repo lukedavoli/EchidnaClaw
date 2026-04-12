@@ -15,7 +15,10 @@ describe('buildApiServer', () => {
       logLevel: 'info',
       nodeEnv: 'test',
       port: 3001,
+      runtimeMode: 'local-minimal',
       serviceName: 'api',
+      sharedCloud: null,
+      webPublicBaseUrl: 'http://127.0.0.1:5173',
     });
 
     apps.push(app);
@@ -25,7 +28,9 @@ describe('buildApiServer', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       environment: 'test',
+      runtimeMode: 'local-minimal',
       service: 'api',
+      sharedCloudConfigured: false,
       status: 'ok',
     });
   });

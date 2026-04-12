@@ -1,0 +1,15 @@
+name: Deploy Main Branch
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  package:
+    uses: ./.github/workflows/build-and-package.yml
+    with:
+      environment_name: production
+      image_tag_prefix: production
+      publish_images: true
+    secrets: inherit

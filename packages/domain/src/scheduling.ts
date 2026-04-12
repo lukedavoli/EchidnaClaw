@@ -13,6 +13,16 @@ const weekdayToUtcDay: Record<string, number> = {
   saturday: 6,
 };
 
+function toUtcWeekday(weekday: string): number {
+  const mappedWeekday = weekdayToUtcDay[weekday];
+
+  if (mappedWeekday === undefined) {
+    throw new Error(`Unsupported weekday '${weekday}'`);
+  }
+
+  return mappedWeekday;
+}
+
 function toDate(value: string): Date {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -53,7 +63,9 @@ function getNextDailyOccurrence(recurrence: NormalizedRecurrence, after: Date): 
 
 function getNextWeeklyOccurrence(recurrence: NormalizedRecurrence, after: Date): string {
   const anchor = toDate(recurrence.anchorAt);
-  const weekdays = new Set((recurrence.weekdays ?? []).map((weekday) => weekdayToUtcDay[weekday]));
+  const weekdays = new Set(
+    (recurrence.weekdays ?? []).map((weekday: string) => toUtcWeekday(weekday)),
+  );
   let candidate = anchor;
 
   for (let iterations = 0; iterations < 366 * 5; iterations += 1) {

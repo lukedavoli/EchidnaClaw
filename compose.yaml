@@ -1,0 +1,90 @@
+name: echidna-claw
+
+x-shared-runtime-env: &shared-runtime-env
+  NODE_ENV: ${NODE_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  ECHIDNA_RUNTIME_MODE: ${ECHIDNA_RUNTIME_MODE:-local-minimal}
+  ECHIDNA_OPERATOR_OBJECT_ID: ${ECHIDNA_OPERATOR_OBJECT_ID:-}
+  ECHIDNA_TRUSTED_USER_OBJECT_IDS: ${ECHIDNA_TRUSTED_USER_OBJECT_IDS:-}
+  ECHIDNA_COSMOS_DB_ENDPOINT: ${ECHIDNA_COSMOS_DB_ENDPOINT:-}
+  ECHIDNA_COSMOS_DB_DATABASE_NAME: ${ECHIDNA_COSMOS_DB_DATABASE_NAME:-}
+  ECHIDNA_COSMOS_DB_CREDENTIAL_SCOPE: ${ECHIDNA_COSMOS_DB_CREDENTIAL_SCOPE:-}
+  ECHIDNA_BLOB_STORAGE_ACCOUNT_URL: ${ECHIDNA_BLOB_STORAGE_ACCOUNT_URL:-}
+  ECHIDNA_BLOB_STORAGE_UPLOADS_CONTAINER: ${ECHIDNA_BLOB_STORAGE_UPLOADS_CONTAINER:-}
+  ECHIDNA_BLOB_STORAGE_ARTIFACTS_CONTAINER: ${ECHIDNA_BLOB_STORAGE_ARTIFACTS_CONTAINER:-}
+  ECHIDNA_KEY_VAULT_URI: ${ECHIDNA_KEY_VAULT_URI:-}
+  ECHIDNA_KEY_VAULT_KEY_ID: ${ECHIDNA_KEY_VAULT_KEY_ID:-}
+  ECHIDNA_FOUNDRY_PROJECT_NAME: ${ECHIDNA_FOUNDRY_PROJECT_NAME:-}
+  ECHIDNA_FOUNDRY_PROJECT_ENDPOINT: ${ECHIDNA_FOUNDRY_PROJECT_ENDPOINT:-}
+  ECHIDNA_MONITOR_CONNECTION_STRING: ${ECHIDNA_MONITOR_CONNECTION_STRING:-}
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://127.0.0.1:3001}
+        VITE_APP_BASE_URL: http://127.0.0.1:4173
+        VITE_APP_TITLE: ${VITE_APP_TITLE:-EchidnaClaw Control Plane}
+        VITE_RUNTIME_MODE: ${VITE_RUNTIME_MODE:-local-minimal}
+    ports:
+      - '4173:4173'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:4173').then((response) => { if (!response.ok) throw new Error(String(response.status)); }).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      <<: *shared-runtime-env
+      ECHIDNA_API_HOST: 0.0.0.0
+      ECHIDNA_API_PORT: ${ECHIDNA_API_PORT:-3001}
+      ECHIDNA_WEB_PUBLIC_BASE_URL: http://127.0.0.1:4173
+    ports:
+      - '${ECHIDNA_API_PORT:-3001}:${ECHIDNA_API_PORT:-3001}'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:' + (process.env.ECHIDNA_API_PORT ?? '3001') + '/healthz').then((response) => response.json()).then((payload) => { if (payload.status !== 'ok') throw new Error('not ok'); }).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  sandbox:
+    build:
+      context: .
+      dockerfile: apps/sandbox/Dockerfile
+    environment:
+      <<: *shared-runtime-env
+      ECHIDNA_SANDBOX_HOST: 0.0.0.0
+      ECHIDNA_SANDBOX_PORT: ${ECHIDNA_SANDBOX_PORT:-3002}
+      ECHIDNA_WEB_PUBLIC_BASE_URL: http://127.0.0.1:4173
+    ports:
+      - '${ECHIDNA_SANDBOX_PORT:-3002}:${ECHIDNA_SANDBOX_PORT:-3002}'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:' + (process.env.ECHIDNA_SANDBOX_PORT ?? '3002') + '/healthz').then((response) => response.json()).then((payload) => { if (payload.status !== 'ok') throw new Error('not ok'); }).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  hands:
+    build:
+      context: .
+      dockerfile: apps/hands/Dockerfile
+    environment:
+      <<: *shared-runtime-env
+      ECHIDNA_HANDS_HEARTBEAT_INTERVAL_MS: ${ECHIDNA_HANDS_HEARTBEAT_INTERVAL_MS:-30000}
+      ECHIDNA_HANDS_LIVENESS_FILE: /tmp/echidna-claw/hands-liveness.json
+      ECHIDNA_WEB_PUBLIC_BASE_URL: http://127.0.0.1:4173

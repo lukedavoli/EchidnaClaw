@@ -9,32 +9,32 @@
     "baseUrl": ".",
     "paths": {
       "@echidna-claw/config": [
-        "packages/config/dist/index.d.ts",
-        "packages/config/src/index.ts"
+        "packages/config/src/index.ts",
+        "packages/config/dist/index.d.ts"
       ],
       "@echidna-claw/config/browser": [
-        "packages/config/dist/browser.d.ts",
-        "packages/config/src/browser.ts"
+        "packages/config/src/browser.ts",
+        "packages/config/dist/browser.d.ts"
       ],
       "@echidna-claw/contracts": [
-        "packages/contracts/dist/index.d.ts",
-        "packages/contracts/src/index.ts"
+        "packages/contracts/src/index.ts",
+        "packages/contracts/dist/index.d.ts"
       ],
       "@echidna-claw/domain": [
-        "packages/domain/dist/index.d.ts",
-        "packages/domain/src/index.ts"
+        "packages/domain/src/index.ts",
+        "packages/domain/dist/index.d.ts"
       ],
       "@echidna-claw/observability": [
-        "packages/observability/dist/index.d.ts",
-        "packages/observability/src/index.ts"
+        "packages/observability/src/index.ts",
+        "packages/observability/dist/index.d.ts"
       ],
       "@echidna-claw/prompting": [
-        "packages/prompting/dist/index.d.ts",
-        "packages/prompting/src/index.ts"
+        "packages/prompting/src/index.ts",
+        "packages/prompting/dist/index.d.ts"
       ],
       "@echidna-claw/testing": [
-        "packages/testing/dist/index.d.ts",
-        "packages/testing/src/index.ts"
+        "packages/testing/src/index.ts",
+        "packages/testing/dist/index.d.ts"
       ]
     },
     "strict": true,

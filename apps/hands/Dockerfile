@@ -10,5 +10,6 @@ WORKDIR /workspace
 COPY . .
 
 RUN pnpm install --frozen-lockfile
+RUN pnpm build
 
-CMD ["pnpm", "--filter", "@echidna-claw/hands", "start"]
+CMD ["node", "apps/hands/dist/index.js"]

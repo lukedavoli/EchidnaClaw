@@ -1,0 +1,92 @@
+name: Build And Package
+
+on:
+  workflow_call:
+    inputs:
+      environment_name:
+        required: true
+        type: string
+      image_tag_prefix:
+        required: true
+        type: string
+      publish_images:
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: package-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      ECHIDNA_CONTAINER_REGISTRY_NAME: ${{ vars.ECHIDNA_CONTAINER_REGISTRY_NAME }}
+      ECHIDNA_CONTAINER_REGISTRY_LOGIN_SERVER: ${{ vars.ECHIDNA_CONTAINER_REGISTRY_LOGIN_SERVER }}
+      ECHIDNA_IMAGE_REPOSITORY_API: ${{ vars.ECHIDNA_IMAGE_REPOSITORY_API || 'echidna-claw/api' }}
+      ECHIDNA_IMAGE_REPOSITORY_HANDS: ${{ vars.ECHIDNA_IMAGE_REPOSITORY_HANDS || 'echidna-claw/hands' }}
+      ECHIDNA_IMAGE_REPOSITORY_SANDBOX: ${{ vars.ECHIDNA_IMAGE_REPOSITORY_SANDBOX || 'echidna-claw/sandbox' }}
+      ECHIDNA_IMAGE_REPOSITORY_WEB: ${{ vars.ECHIDNA_IMAGE_REPOSITORY_WEB || 'echidna-claw/web' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compute image tag
+        run: echo "ECHIDNA_IMAGE_TAG=${{ inputs.image_tag_prefix }}-$(git rev-parse --short=12 HEAD)" >> "$GITHUB_ENV"
+
+      - name: Check whether registry publishing is available
+        id: publish_mode
+        run: |
+          if [ "${{ inputs.publish_images }}" != "true" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "${{ env.ECHIDNA_CONTAINER_REGISTRY_LOGIN_SERVER }}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "${{ secrets.ECHIDNA_CONTAINER_REGISTRY_USERNAME }}" ] || [ -z "${{ secrets.ECHIDNA_CONTAINER_REGISTRY_PASSWORD }}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Show target image references
+        run: node ./scripts/docker-build.mjs --dry-run
+
+      - name: Build images
+        if: ${{ steps.publish_mode.outputs.enabled != 'true' }}
+        run: pnpm docker:build
+
+      - name: Log in to the container registry
+        if: ${{ steps.publish_mode.outputs.enabled == 'true' }}
+        run: echo "${{ secrets.ECHIDNA_CONTAINER_REGISTRY_PASSWORD }}" | docker login "${{ env.ECHIDNA_CONTAINER_REGISTRY_LOGIN_SERVER }}" --username "${{ secrets.ECHIDNA_CONTAINER_REGISTRY_USERNAME }}" --password-stdin
+
+      - name: Build and push images
+        if: ${{ steps.publish_mode.outputs.enabled == 'true' }}
+        run: node ./scripts/docker-build.mjs --push
+
+      - name: Skip registry publish
+        if: ${{ steps.publish_mode.outputs.enabled != 'true' && inputs.publish_images }}
+        run: echo "Registry settings or credentials are missing. The workflow stops after validating the packaging path."
+
+      - name: Deployment stub
+        run: echo "Infrastructure deployment remains intentionally disabled until the Step 3 infrastructure entrypoints land."

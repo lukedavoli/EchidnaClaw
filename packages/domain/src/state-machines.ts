@@ -26,7 +26,10 @@ const allowedApprovalTransitions: Record<ApprovalState, readonly ApprovalState[]
   cancelled: [],
 };
 
-const allowedProvisioningTransitions: Record<AgentProvisioningState, readonly AgentProvisioningState[]> = {
+const allowedProvisioningTransitions: Record<
+  AgentProvisioningState,
+  readonly AgentProvisioningState[]
+> = {
   pending_provisioning: ['provisioning'],
   provisioning: ['active', 'provisioning_failed'],
   provisioning_failed: ['provisioning'],
@@ -44,7 +47,9 @@ function assertTransition<TState extends string>(
   allowedTransitions: Record<TState, readonly TState[]>,
   stateMachineName: string,
 ): void {
-  if (!allowedTransitions[current].includes(next)) {
+  const transitions = allowedTransitions[current] ?? [];
+
+  if (!transitions.includes(next)) {
     throw new Error(`Invalid ${stateMachineName} transition: ${current} -> ${next}`);
   }
 }
@@ -54,10 +59,14 @@ function clearsHandsSlot(state: TaskState): boolean {
 }
 
 export function canTransitionTaskState(current: TaskState, next: TaskState): boolean {
-  return allowedTaskTransitions[current].includes(next);
+  return (allowedTaskTransitions[current] ?? []).includes(next);
 }
 
-export function transitionTaskState(task: Task, nextState: TaskState, transitionedAt: string): Task {
+export function transitionTaskState(
+  task: Task,
+  nextState: TaskState,
+  transitionedAt: string,
+): Task {
   assertTransition(task.state, nextState, allowedTaskTransitions, 'task');
 
   return {
@@ -70,7 +79,7 @@ export function transitionTaskState(task: Task, nextState: TaskState, transition
 }
 
 export function canTransitionApprovalState(current: ApprovalState, next: ApprovalState): boolean {
-  return allowedApprovalTransitions[current].includes(next);
+  return (allowedApprovalTransitions[current] ?? []).includes(next);
 }
 
 export function transitionApprovalState(
@@ -94,7 +103,7 @@ export function canTransitionAgentProvisioningState(
   current: AgentProvisioningState,
   next: AgentProvisioningState,
 ): boolean {
-  return allowedProvisioningTransitions[current].includes(next);
+  return (allowedProvisioningTransitions[current] ?? []).includes(next);
 }
 
 export function transitionAgentProvisioningState(
@@ -102,7 +111,12 @@ export function transitionAgentProvisioningState(
   nextState: AgentProvisioningState,
   transitionedAt: string,
 ): Agent {
-  assertTransition(agent.provisioningState, nextState, allowedProvisioningTransitions, 'agent provisioning');
+  assertTransition(
+    agent.provisioningState,
+    nextState,
+    allowedProvisioningTransitions,
+    'agent provisioning',
+  );
 
   return {
     ...agent,
@@ -111,12 +125,20 @@ export function transitionAgentProvisioningState(
   };
 }
 
-export function canTransitionSoftDeleteState(current: SoftDeleteState, next: SoftDeleteState): boolean {
-  return allowedSoftDeleteTransitions[current].includes(next);
+export function canTransitionSoftDeleteState(
+  current: SoftDeleteState,
+  next: SoftDeleteState,
+): boolean {
+  return (allowedSoftDeleteTransitions[current] ?? []).includes(next);
 }
 
 export function softDeleteAgent(agent: Agent, deletedAt: string): Agent {
-  assertTransition(agent.lifecycleState, 'soft_deleted', allowedSoftDeleteTransitions, 'soft delete');
+  assertTransition(
+    agent.lifecycleState,
+    'soft_deleted',
+    allowedSoftDeleteTransitions,
+    'soft delete',
+  );
 
   return {
     ...agent,

@@ -7,7 +7,9 @@ export function buildApiServer(config: ApiConfig = loadApiConfig()): FastifyInst
 
   app.get('/healthz', async () => ({
     environment: config.nodeEnv,
+    runtimeMode: config.runtimeMode,
     service: config.serviceName,
+    sharedCloudConfigured: config.sharedCloud != null,
     status: 'ok',
   }));
 

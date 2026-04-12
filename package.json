@@ -10,7 +10,10 @@
   "scripts": {
     "build": "turbo run build",
     "clean": "turbo run clean && rimraf .turbo",
+    "compose:down": "docker compose down --remove-orphans",
+    "compose:up": "docker compose up --build",
     "dev": "turbo run dev --parallel",
+    "dev:smoke": "node ./scripts/dev-smoke.mjs",
     "docker:build": "node ./scripts/docker-build.mjs",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
@@ -27,6 +30,7 @@
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.3.4",
+    "dotenv": "^16.4.7",
     "eslint": "^9.25.1",
     "globals": "^15.15.0",
     "jsdom": "^26.1.0",

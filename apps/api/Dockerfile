@@ -10,7 +10,8 @@ WORKDIR /workspace
 COPY . .
 
 RUN pnpm install --frozen-lockfile
+RUN pnpm build
 
 EXPOSE 3001
 
-CMD ["pnpm", "--filter", "@echidna-claw/api", "start"]
+CMD ["node", "apps/api/dist/index.js"]
