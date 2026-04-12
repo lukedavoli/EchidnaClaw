@@ -1,0 +1,36 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/hands"
+    },
+    {
+      "path": "./apps/sandbox"
+    },
+    {
+      "path": "./apps/web"
+    },
+    {
+      "path": "./packages/config"
+    },
+    {
+      "path": "./packages/contracts"
+    },
+    {
+      "path": "./packages/domain"
+    },
+    {
+      "path": "./packages/observability"
+    },
+    {
+      "path": "./packages/prompting"
+    },
+    {
+      "path": "./packages/testing"
+    }
+  ]
+}
+

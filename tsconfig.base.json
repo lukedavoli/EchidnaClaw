@@ -1,0 +1,51 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2023"
+    ],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@echidna-claw/config": [
+        "packages/config/src/index.ts"
+      ],
+      "@echidna-claw/config/browser": [
+        "packages/config/src/browser.ts"
+      ],
+      "@echidna-claw/contracts": [
+        "packages/contracts/src/index.ts"
+      ],
+      "@echidna-claw/domain": [
+        "packages/domain/src/index.ts"
+      ],
+      "@echidna-claw/observability": [
+        "packages/observability/src/index.ts"
+      ],
+      "@echidna-claw/prompting": [
+        "packages/prompting/src/index.ts"
+      ],
+      "@echidna-claw/testing": [
+        "packages/testing/src/index.ts"
+      ]
+    },
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "useUnknownInCatchVariables": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "types": [
+      "node"
+    ]
+  }
+}
