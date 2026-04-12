@@ -39,28 +39,30 @@ var normalizedTags = union(tags, {
   'managed-by': 'bicep'
 })
 
-var hyphenatedBaseName = toLower('${namePrefix}-${environmentName}')
-var compactBaseName = toLower(replace('${namePrefix}${environmentName}', '-', ''))
 var uniqueSuffix = take(toLower(uniqueString(subscription().subscriptionId, resourceGroup().id, environmentName)), 5)
+var projectCode = toLower(replace(namePrefix, '-', ''))
+var envCode = toLower(replace(environmentName, '-', ''))
+var compactGlobalNameSuffix = '${projectCode}${envCode}${uniqueSuffix}'
+var artifactsContainerName = 'blob-artifacts-${environmentName}'
 
 var names = {
-  acr: take('${compactBaseName}acr${uniqueSuffix}', 50)
-  logAnalytics: '${hyphenatedBaseName}-law'
-  appInsights: '${hyphenatedBaseName}-appi'
-  containerAppsEnvironment: '${hyphenatedBaseName}-cae'
-  apiIdentity: '${hyphenatedBaseName}-api-mi'
-  handsIdentity: '${hyphenatedBaseName}-hands-mi'
-  schedulerIdentity: '${hyphenatedBaseName}-scheduler-mi'
-  sandboxIdentity: '${hyphenatedBaseName}-sandbox-mi'
-  apiApp: '${hyphenatedBaseName}-api'
-  sandboxApp: '${hyphenatedBaseName}-sandbox'
-  handsJob: '${hyphenatedBaseName}-hands'
-  schedulerJob: '${hyphenatedBaseName}-scheduler'
-  cosmos: '${hyphenatedBaseName}-cosmos'
-  storage: take('${compactBaseName}st${uniqueSuffix}', 24)
-  keyVault: take('${hyphenatedBaseName}-kv-${uniqueSuffix}', 24)
-  foundryAccount: take('${compactBaseName}ai${uniqueSuffix}', 64)
-  foundryProject: '${hyphenatedBaseName}-foundry'
+  acr: take('acr${compactGlobalNameSuffix}', 50)
+  logAnalytics: 'law-ec-${environmentName}'
+  appInsights: 'appi-ec-${environmentName}'
+  containerAppsEnvironment: 'cae-ec-${environmentName}'
+  apiIdentity: 'uai-api-${environmentName}'
+  handsIdentity: 'uai-hands-${environmentName}'
+  schedulerIdentity: 'uai-scheduler-${environmentName}'
+  sandboxIdentity: 'uai-sandbox-${environmentName}'
+  apiApp: 'aca-api-${environmentName}'
+  sandboxApp: 'aca-sandbox-${environmentName}'
+  handsJob: 'acj-hands-${environmentName}'
+  schedulerJob: 'acj-scheduler-${environmentName}'
+  cosmos: 'cos-ec-${environmentName}'
+  storage: take('st${compactGlobalNameSuffix}', 24)
+  keyVault: take('kv-ec-${environmentName}-${uniqueSuffix}', 24)
+  foundryAccount: take('ais-ec-${environmentName}-${uniqueSuffix}', 64)
+  foundryProject: 'aip-ec-${environmentName}'
 }
 
 module logAnalytics '../modules/foundation/log-analytics.bicep' = {
@@ -167,6 +169,7 @@ module storage '../modules/data/storage-account.bicep' = {
     name: names.storage
     location: location
     tags: normalizedTags
+    artifactsContainerName: artifactsContainerName
     retentionDays: storageRetentionDays
     contributorPrincipalIds: [
       apiIdentity.outputs.principalId

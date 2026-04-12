@@ -13,6 +13,13 @@ This directory contains the initial Azure Bicep skeleton for EchidnaClaw Step 3.
 - `environments/main.bicep`: the full resource-group composition.
 - `environments/*.bicepparam`: environment-specific parameter sets for `dev` and `prd`.
 
+## Naming
+
+- Resource names now follow `{type}-{purpose}-{environment}` where Azure naming rules allow it.
+- Shared singleton resources use `ec` as the purpose, for example `law-ec-dev` and `cae-ec-prd`.
+- Resources with a specific runtime purpose use that purpose, for example `aca-api-dev`, `aca-sandbox-prd`, `acj-hands-dev`, and `uai-scheduler-prd`.
+- Global-name exceptions such as ACR and Storage compact the same parts without hyphens and add a short uniqueness suffix, for example `acrecdevabc12` and `stecprdabc12`.
+
 ## Deployment Entry Points
 
 Build the composition:
@@ -70,6 +77,6 @@ The top-level template emits the values later steps need for runtime wiring:
 
 ## Foundry Notes
 
-- `attach` mode is the default in the committed parameter files and is intended for subscriptions where Foundry resources are provisioned elsewhere.
-- `create` mode provisions the Azure AI Services account, a Foundry project, and the default model deployment contract.
+- `create` mode is the default in the committed parameter files and provisions the Azure AI Services account, Foundry project, and default model deployment contract inside this deployment boundary.
+- `attach` mode remains available for subscriptions where Foundry resources are provisioned elsewhere.
 - Memory store creation is still parameterized even in `create` mode because a stable ARM surface for that resource path has not been confirmed for this repo yet.
