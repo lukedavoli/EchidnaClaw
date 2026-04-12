@@ -12,9 +12,9 @@ param tags = {
 
 param containerRegistrySku = 'Basic'
 param logAnalyticsRetentionInDays = 30
-param cosmosDatabaseName = 'echidna'
+param cosmosDatabaseName = 'sqldb-ec-prd'
 param storageRetentionDays = 14
-param keyVaultKeyName = 'credential-encryption'
+param keyVaultKeyName = 'key-credential-prd'
 
 param images = {
   api: {
@@ -85,24 +85,24 @@ param workloadBindings = {
 }
 
 param foundry = {
-  mode: 'attach'
+  mode: 'create'
   accountName: ''
   projectName: ''
   projectDisplayName: 'EchidnaClaw Prd'
   projectDescription: 'EchidnaClaw prd Foundry project.'
   customSubDomainName: ''
-  deploymentName: 'gpt-5-4-mini'
+  deploymentName: 'dep-gpt-5-4-mini-prd'
   deploymentSkuName: 'GlobalStandard'
   deploymentCapacity: 1
   modelFormat: 'OpenAI'
   modelName: 'gpt-5.4-mini'
-  modelVersion: 'latest'
+  modelVersion: '2026-03-17'
   memoryStoreEndpointOrId: ''
-  attachEndpoint: 'https://example.services.ai.azure.com/api/projects/ec-prd'
-  attachAccountResourceId: '/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.CognitiveServices/accounts/ec-prd-foundry'
-  attachProjectResourceId: '/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.CognitiveServices/accounts/ec-prd-foundry/projects/ec-prd-foundry'
-  attachMemoryStoreEndpointOrId: 'memory-stores/ec-prd'
-  attachDeploymentName: 'gpt-5-4-mini'
+  attachEndpoint: ''
+  attachAccountResourceId: ''
+  attachProjectResourceId: ''
+  attachMemoryStoreEndpointOrId: ''
+  attachDeploymentName: ''
 }
 
 param publicEdgeConfig = {
