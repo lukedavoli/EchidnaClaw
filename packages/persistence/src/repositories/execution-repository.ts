@@ -31,6 +31,7 @@ export interface HandsRunClaimResult {
 
 export interface ExecutionRepository {
   createHeadTurn(headTurn: HeadTurn): Promise<StoredRecord<HeadTurn>>;
+  findHeadTurn(headTurnId: HeadTurnId): Promise<StoredRecord<HeadTurn> | null>;
   getHeadTurn(agentId: AgentId, headTurnId: HeadTurnId): Promise<StoredRecord<HeadTurn> | null>;
   listActiveHeadTurns(agentId: AgentId): Promise<StoredRecord<HeadTurn>[]>;
   replaceHeadTurn(headTurn: HeadTurn, expectedEtag: string): Promise<StoredRecord<HeadTurn>>;
@@ -65,6 +66,17 @@ export class DefaultExecutionRepository implements ExecutionRepository {
 
   async createHeadTurn(headTurn: HeadTurn): Promise<StoredRecord<HeadTurn>> {
     return this.store.create(headTurnSchema.parse(headTurn));
+  }
+
+  async findHeadTurn(headTurnId: HeadTurnId): Promise<StoredRecord<HeadTurn> | null> {
+    const results = await this.store.query({
+      containerName: operationalContainerName,
+      schema: headTurnSchema,
+      where: [eq('recordType', 'head_turn'), eq('id', headTurnId)],
+      limit: 1,
+    });
+
+    return results[0] ?? null;
   }
 
   async getHeadTurn(

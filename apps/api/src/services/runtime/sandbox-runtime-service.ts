@@ -10,6 +10,7 @@ export function createSandboxRuntimeService(options: {
 }): SandboxService {
   return {
     async closeSession(_sessionId: string): Promise<SandboxSession> {
+      void _sessionId;
       throw new NotImplementedYetError('Sandbox session closure is reserved for Step 14.');
     },
     async createSession(input: SandboxCreateSessionRequest): Promise<SandboxSession> {

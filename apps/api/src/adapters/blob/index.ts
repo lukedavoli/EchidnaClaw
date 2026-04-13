@@ -15,6 +15,7 @@ export function createArtifactStorageAdapter(mode: 'stubbed' | 'configured_place
   return {
     adapter: {
       async storeArtifact(_artifactName: string): Promise<string> {
+        void _artifactName;
         throw new NotImplementedYetError(
           'Artifact storage is reserved for later persistence steps.',
         );

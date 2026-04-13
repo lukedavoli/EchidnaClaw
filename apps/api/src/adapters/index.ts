@@ -39,7 +39,7 @@ export function createExternalAdapters(config: ApiRuntimeConfig): {
 } {
   const placeholderMode: 'configured_placeholder' | 'stubbed' =
     config.runtimeMode === 'local-minimal' ? 'stubbed' : 'configured_placeholder';
-  const foundry = createFoundryAdapters(placeholderMode);
+  const foundry = createFoundryAdapters(config);
   const repositories = createRepositoryBundle(config);
   const keyVault = createKeyVaultAdapters(placeholderMode);
   const artifactStorage = createArtifactStorageAdapter(placeholderMode);

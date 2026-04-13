@@ -3,13 +3,29 @@ import {
   createAzureRepositorySuite,
   createInMemoryRepositorySuite,
   type AgentRegistryRepository,
+  type AgentRepository,
+  type ChannelRepository,
+  type ExecutionRepository,
+  type MessageRepository,
+  type RunJournalRepository,
+  type ScheduleRepository,
+  type TaskRepository,
+  type WorkingContextRepository,
 } from '@echidna-claw/persistence';
 
 import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
 import { NotImplementedYetError } from '../../http/errors.js';
 
 export interface RepositoryBundle {
+  agents: AgentRepository;
   agentRegistry: AgentRegistryRepository;
+  channels: ChannelRepository;
+  execution: ExecutionRepository;
+  messages: MessageRepository;
+  runJournals: RunJournalRepository;
+  schedules: ScheduleRepository;
+  tasks: TaskRepository;
+  workingContexts: WorkingContextRepository;
   analytics: {
     getOverview(): Promise<AnalyticsOverview>;
   };
@@ -53,7 +69,15 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
       ready: true,
     },
     repositories: {
+      agents: suite.agents,
       agentRegistry: suite.agentRegistry,
+      channels: suite.channels,
+      execution: suite.execution,
+      messages: suite.messages,
+      runJournals: suite.runJournals,
+      schedules: suite.schedules,
+      tasks: suite.tasks,
+      workingContexts: suite.workingContexts,
       analytics: {
         async getOverview(): Promise<AnalyticsOverview> {
           throw new NotImplementedYetError('Analytics aggregation is reserved for Step 18.');
@@ -61,6 +85,7 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
       },
       approvals: {
         async getState(_approvalId: ApprovalId): Promise<ApprovalState> {
+          void _approvalId;
           throw new NotImplementedYetError('Approval persistence is reserved for Step 16.');
         },
       },

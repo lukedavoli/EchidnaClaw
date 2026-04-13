@@ -2,51 +2,33 @@ import { z } from 'zod';
 
 import { correlationMetadataSchema } from './correlation.js';
 import {
+  type HeadStartTurnRequest,
+  type HeadSupersedeTurnRequest,
+  type HeadTurnExecutionResult,
+} from './head-runtime.js';
+import {
   channelIdSchema,
   credentialIdSchema,
   agentIdSchema,
   approvalIdSchema,
   handsRunIdSchema,
-  headTurnIdSchema,
-  inboundMessageIdSchema,
   isoDateTimeSchema,
   nonEmptyStringSchema,
   sandboxSessionIdSchema,
   taskEnvelopeIdSchema,
   taskIdSchema,
   timeZoneSchema,
-  workingContextIdSchema,
 } from './identifiers.js';
 import {
   agentSchema,
   channelStateSchema,
   HandsRun,
   HeadTurn,
-  OutboundMessage,
   SandboxSession,
   Task,
-  UsageEvent,
   approvalStateSchema,
   usageEventSchema,
 } from './records.js';
-
-export const headStartTurnRequestSchema = z
-  .object({
-    agentId: agentIdSchema,
-    workingContextId: workingContextIdSchema,
-    inboundMessageIds: z.array(inboundMessageIdSchema).min(1),
-    readThroughMessageSequence: z.number().int().positive(),
-    correlation: correlationMetadataSchema,
-  })
-  .strict();
-
-export const headSupersedeTurnRequestSchema = z
-  .object({
-    headTurnId: headTurnIdSchema,
-    supersededBySequence: z.number().int().positive(),
-    correlation: correlationMetadataSchema,
-  })
-  .strict();
 
 export const handsStartRunRequestSchema = z
   .object({
@@ -174,8 +156,6 @@ export const analyticsOverviewSchema = z
   })
   .strict();
 
-export type HeadStartTurnRequest = z.infer<typeof headStartTurnRequestSchema>;
-export type HeadSupersedeTurnRequest = z.infer<typeof headSupersedeTurnRequestSchema>;
 export type HandsStartRunRequest = z.infer<typeof handsStartRunRequestSchema>;
 export type HandsReleaseForUserRequest = z.infer<typeof handsReleaseForUserRequestSchema>;
 export type SandboxCreateSessionRequest = z.infer<typeof sandboxCreateSessionRequestSchema>;
@@ -194,10 +174,8 @@ export type RecordAgentProvisioningFailureRequest = z.infer<
 export type AnalyticsOverview = z.infer<typeof analyticsOverviewSchema>;
 
 export interface HeadService {
-  startTurn(input: HeadStartTurnRequest): Promise<HeadTurn>;
+  startTurn(input: HeadStartTurnRequest): Promise<HeadTurnExecutionResult>;
   supersedeTurn(input: HeadSupersedeTurnRequest): Promise<HeadTurn>;
-  createTask(task: Task): Promise<Task>;
-  sendMessage(message: OutboundMessage): Promise<OutboundMessage>;
 }
 
 export interface HandsService {

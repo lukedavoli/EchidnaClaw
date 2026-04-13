@@ -22,14 +22,17 @@ export function createTelegramTransportAdapter(mode: 'stubbed' | 'configured_pla
   return {
     adapter: {
       async handleApprovalCallback(_update: TelegramApprovalCallbackUpdate): Promise<void> {
+        void _update;
         throw new NotImplementedYetError(
           'Telegram approval callback handling is reserved for Step 9.',
         );
       },
       async handleWebhook(_update: TelegramWebhookUpdate): Promise<void> {
+        void _update;
         throw new NotImplementedYetError('Telegram ingress is reserved for Step 9.');
       },
       async sendMessage(_input: OutboundMessageRequest): Promise<void> {
+        void _input;
         throw new NotImplementedYetError('Telegram outbound delivery is reserved for Step 9.');
       },
     },

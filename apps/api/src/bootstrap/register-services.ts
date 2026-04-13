@@ -42,8 +42,11 @@ export function registerServices(options: {
         logger: options.loggerFactory.createLogger({ service: 'hands_runtime' }),
       }),
       headRuntimeService: createHeadRuntimeService({
+        config: options.config,
         headRuntime: adapters.adapters.foundry.headRuntime,
         logger: options.loggerFactory.createLogger({ service: 'head_runtime' }),
+        repositories: adapters.adapters.repositories,
+        repositoryConfig,
       }),
       outboundMessagingService: createOutboundMessagingService({
         logger: options.loggerFactory.createLogger({ service: 'outbound_messaging' }),

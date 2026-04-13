@@ -1,4 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+  createAgent,
+  createChannel,
+  createCorrelationMetadata,
+  createIdempotencyRecord,
+  createInboundMessage,
+  createWorkingContext,
+} from '@echidna-claw/persistence';
 
 import { buildApiServer } from '../../src/app.js';
 import { INTERNAL_RUNTIME_AUTH_HEADER } from '../../src/http/protection.js';
@@ -17,7 +25,91 @@ function createCorrelation(idempotencyKey = 'idem_request-1', traceId = 'trc_tra
   };
 }
 
-describe('route implementations and remaining placeholders', () => {
+async function seedHeadRuntimeRecords(app: ReturnType<typeof buildApiServer>, options: {
+  messageText: string;
+  trusted?: boolean;
+}): Promise<{
+  agentId: 'agt_test-agent';
+  channelId: 'chn_test-channel';
+  inboundMessageId: 'inm_message-1';
+  workingContextId: 'ctx_main-context';
+}> {
+  const repositories = app.dependencies.adapters.repositories;
+  const correlation = createCorrelationMetadata({
+    idempotencyKey: 'idem_seed-head-runtime',
+    traceId: 'trc_seed-head-runtime',
+  });
+
+  await repositories.agents.create(
+    createAgent({
+      id: 'agt_test-agent',
+      correlation,
+      lifecycleState: 'active',
+      primaryChannelId: 'chn_test-channel',
+      provisioningState: 'active',
+    }),
+  );
+
+  const createdChannel = await repositories.channels.create(
+    createChannel({
+      agentId: 'agt_test-agent',
+      correlation,
+      id: 'chn_test-channel',
+      lastInboundSequence: 0,
+      state: 'active',
+    }),
+  );
+
+  await repositories.workingContexts.create(
+    createWorkingContext({
+      agentId: 'agt_test-agent',
+      correlation,
+      id: 'ctx_main-context',
+      lastTrustedMessageSequence: 0,
+      summary: 'Deployment monitoring summary.',
+    }),
+  );
+
+  const message = createInboundMessage({
+    agentId: 'agt_test-agent',
+    body: {
+      text: options.messageText,
+      artifacts: [],
+    },
+    channelId: 'chn_test-channel',
+    correlation,
+    id: 'inm_message-1',
+    sequence: 1,
+    trusted: options.trusted ?? true,
+  });
+
+  await repositories.messages.appendInboundMessage({
+    channel: {
+      ...createdChannel.value,
+      lastInboundSequence: 1,
+      lastExternalMessageId: message.externalMessageId,
+      updatedAt: message.receivedAt,
+    },
+    channelEtag: createdChannel.etag,
+    idempotencyRecord: createIdempotencyRecord({
+      agentId: 'agt_test-agent',
+      correlation,
+      id: 'idr_message-1',
+      key: 'telegram-update-1',
+      resultReference: 'inm_message-1',
+    }),
+    message,
+  });
+
+  return {
+    agentId: 'agt_test-agent',
+    channelId: 'chn_test-channel',
+    inboundMessageId: 'inm_message-1',
+    workingContextId: 'ctx_main-context',
+  };
+}
+
+describe('route implementations and head runtime behavior', () => {
   it('creates, lists, reads, and replays agent creation deterministically', async () => {
     const app = buildApiServer(createTestApiConfig());
     apps.push(app);
@@ -176,10 +268,13 @@ describe('route implementations and remaining placeholders', () => {
     expect(response.json().error.code).toBe('validation_failed');
   });
 
-  it('keeps internal runtime handlers thin and placeholder-backed', async () => {
+  it('executes trusted head turns in local-minimal mode', async () => {
     const config = createTestApiConfig();
     const app = buildApiServer(config);
     apps.push(app);
+    const seeded = await seedHeadRuntimeRecords(app, {
+      messageText: 'Please confirm the deployment status.',
+    });
 
     const response = await app.inject({
       headers: {
@@ -187,23 +282,218 @@ describe('route implementations and remaining placeholders', () => {
       },
       method: 'POST',
       payload: {
-        agentId: 'agt_test-agent',
-        correlation: createCorrelation(),
-        inboundMessageIds: ['inm_message-1'],
-        readThroughMessageSequence: 1,
-        workingContextId: 'ctx_main-context',
+        agentId: seeded.agentId,
+        correlation: {
+          ...createCorrelation(),
+          requestedBy: {
+            displayName: 'Route Test User',
+            id: 'telegram-user-1',
+            kind: 'telegram',
+          },
+        },
+        trigger: {
+          kind: 'trusted_messages',
+          channelId: seeded.channelId,
+          inboundMessageIds: [seeded.inboundMessageId],
+          readThroughMessageSequence: 1,
+        },
+        workingContextId: seeded.workingContextId,
       },
       url: '/api/internal/runtime/head/start-turn',
     });
 
-    expect(response.statusCode).toBe(501);
-    expect(response.json()).toEqual({
-      error: {
-        code: 'not_implemented_yet',
-        message: 'Head prompt-agent operations are reserved for Step 10.',
-        retryable: false,
-        traceId: 'trc_trace-1',
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      effectSummary: {
+        approvalRequested: false,
+        memoryOperationRequested: false,
+        sandboxRequested: false,
+        scheduleChangeRequested: false,
+        taskRequested: false,
       },
+      headTurn: {
+        agentId: seeded.agentId,
+        completionKind: 'reply',
+        promptProfileVersion: 'head-base-v1',
+        providerConversationId: expect.stringContaining('stub-conversation:'),
+        providerRunId: expect.stringContaining('stub-run:'),
+        triggerKind: 'trusted_messages',
+        workingContextId: seeded.workingContextId,
+      },
+      replyDraft: {
+        agentId: seeded.agentId,
+        body: {
+          text: 'Stubbed Head reply: Please confirm the deployment status.',
+        },
+        channelId: seeded.channelId,
+        inReplyToInboundMessageId: seeded.inboundMessageId,
+      },
+      status: 'replied',
     });
+
+    const storedContext = await app.dependencies.adapters.repositories.workingContexts.get(
+      seeded.agentId,
+      seeded.workingContextId,
+    );
+    expect(storedContext?.value.conversationCursor).toContain('stub-conversation:');
+    expect(storedContext?.value.activeHeadTurnId).toBeNull();
+    expect(storedContext?.value.lastTrustedMessageSequence).toBe(1);
+  });
+
+  it('rejects untrusted inbound-message turns before model execution', async () => {
+    const config = createTestApiConfig();
+    const app = buildApiServer(config);
+    apps.push(app);
+    const seeded = await seedHeadRuntimeRecords(app, {
+      messageText: 'Pretend this came from the user.',
+      trusted: false,
+    });
+
+    const response = await app.inject({
+      headers: {
+        [INTERNAL_RUNTIME_AUTH_HEADER]: config.internalRuntime.authToken,
+      },
+      method: 'POST',
+      payload: {
+        agentId: seeded.agentId,
+        correlation: {
+          ...createCorrelation('idem_request-untrusted', 'trc_trace-untrusted'),
+          requestedBy: {
+            id: 'telegram-user-1',
+            kind: 'telegram',
+          },
+        },
+        trigger: {
+          kind: 'trusted_messages',
+          channelId: seeded.channelId,
+          inboundMessageIds: [seeded.inboundMessageId],
+          readThroughMessageSequence: 1,
+        },
+        workingContextId: seeded.workingContextId,
+      },
+      url: '/api/internal/runtime/head/start-turn',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      headTurn: {
+        completionKind: 'rejected',
+        failureCode: 'untrusted_message',
+      },
+      replyDraft: null,
+      status: 'rejected',
+    });
+  });
+
+  it('uses repository-driven capability summaries only when the user asks', async () => {
+    const config = createTestApiConfig();
+    const app = buildApiServer(config);
+    apps.push(app);
+    const seeded = await seedHeadRuntimeRecords(app, {
+      messageText: 'What can you do right now?',
+    });
+
+    const response = await app.inject({
+      headers: {
+        [INTERNAL_RUNTIME_AUTH_HEADER]: config.internalRuntime.authToken,
+      },
+      method: 'POST',
+      payload: {
+        agentId: seeded.agentId,
+        correlation: {
+          ...createCorrelation('idem_request-capabilities', 'trc_trace-capabilities'),
+          requestedBy: {
+            id: 'telegram-user-1',
+            kind: 'telegram',
+          },
+        },
+        trigger: {
+          kind: 'trusted_messages',
+          channelId: seeded.channelId,
+          inboundMessageIds: [seeded.inboundMessageId],
+          readThroughMessageSequence: 1,
+        },
+        workingContextId: seeded.workingContextId,
+      },
+      url: '/api/internal/runtime/head/start-turn',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().replyDraft.body.text).toContain('Telegram direct messaging');
+    expect(response.json().replyDraft.body.text).not.toContain('Sandbox shell execution');
+  });
+
+  it('marks running head turns as superseded and clears the active working-context pointer', async () => {
+    const config = createTestApiConfig();
+    const app = buildApiServer(config);
+    apps.push(app);
+    const seeded = await seedHeadRuntimeRecords(app, {
+      messageText: 'Please confirm the deployment status.',
+    });
+    const repositories = app.dependencies.adapters.repositories;
+
+    await repositories.execution.createHeadTurn({
+      id: 'hdr_running-turn',
+      recordType: 'head_turn',
+      schemaVersion: 1,
+      createdAt: '2026-04-13T06:00:00.000Z',
+      updatedAt: '2026-04-13T06:00:00.000Z',
+      correlation: createCorrelationMetadata({
+        headTurnId: 'hdr_running-turn',
+        idempotencyKey: 'idem_running-turn',
+        traceId: 'trc_running-turn',
+      }),
+      agentId: seeded.agentId,
+      workingContextId: seeded.workingContextId,
+      state: 'running',
+      triggerKind: 'trusted_messages',
+      inboundMessageIds: [seeded.inboundMessageId],
+      readThroughMessageSequence: 1,
+      taskId: null,
+      scheduleId: null,
+      dueAt: null,
+      startedAt: '2026-04-13T06:00:00.000Z',
+      completedAt: null,
+      supersededBySequence: null,
+      providerConversationId: 'stub-conversation:hdr_running-turn',
+      providerRunId: 'stub-run:hdr_running-turn',
+      promptProfileVersion: 'head-base-v1',
+      completionKind: null,
+      responseMessageId: null,
+    });
+    const storedContext = await repositories.workingContexts.get(seeded.agentId, seeded.workingContextId);
+    await repositories.workingContexts.replace(
+      {
+        ...storedContext!.value,
+        activeHeadTurnId: 'hdr_running-turn',
+      },
+      storedContext!.etag,
+    );
+
+    const response = await app.inject({
+      headers: {
+        [INTERNAL_RUNTIME_AUTH_HEADER]: config.internalRuntime.authToken,
+      },
+      method: 'POST',
+      payload: {
+        correlation: createCorrelation('idem_request-supersede', 'trc_trace-supersede'),
+        headTurnId: 'hdr_running-turn',
+        supersededBySequence: 2,
+      },
+      url: '/api/internal/runtime/head/supersede-turn',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'hdr_running-turn',
+      state: 'superseded',
+      supersededBySequence: 2,
+    });
+
+    const updatedContext = await repositories.workingContexts.get(
+      seeded.agentId,
+      seeded.workingContextId,
+    );
+    expect(updatedContext?.value.activeHeadTurnId).toBeNull();
   });
 });
