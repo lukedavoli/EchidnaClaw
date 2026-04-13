@@ -13,7 +13,22 @@
   },
   "dependencies": {
     "@echidna-claw/config": "workspace:*",
+    "@echidna-claw/contracts": "workspace:*",
+    "@mantine/charts": "^9.0.1",
+    "@mantine/core": "^9.0.1",
+    "@mantine/hooks": "^9.0.1",
+    "@mantine/notifications": "^9.0.1",
+    "@tabler/icons-react": "^3.41.1",
+    "@tanstack/react-query": "^5.99.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.14.0",
+    "recharts": "^3.8.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@testing-library/user-event": "^14.6.1",
+    "msw": "^2.13.2",
+    "vite-tsconfig-paths": "^6.1.1"
   }
 }

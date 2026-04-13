@@ -1,0 +1,22 @@
+:root {
+  --font-body: "Segoe UI Variable", "Segoe UI", sans-serif;
+  --font-heading: "Trebuchet MS", "Segoe UI", sans-serif;
+  --page-max-width: 72rem;
+  --surface: rgba(255, 250, 240, 0.78);
+  --surface-strong: rgba(255, 255, 255, 0.92);
+  --surface-border: rgba(30, 51, 66, 0.12);
+  --surface-shadow: 0 22px 60px rgba(15, 30, 44, 0.1);
+  --ink: #10212b;
+  --ink-muted: #586874;
+  --warm-accent: #9a5c2b;
+  --mantine-color-sand-0: #fffaf2;
+  --mantine-color-sand-1: #f6e8d8;
+  --mantine-color-sand-2: #edd2b6;
+  --mantine-color-sand-3: #dfb98d;
+  --mantine-color-sand-4: #cf9e63;
+  --mantine-color-sand-5: #b87b33;
+  --mantine-color-sand-6: #9a5c2b;
+  --mantine-color-sand-7: #7c4525;
+  --mantine-color-sand-8: #5d331f;
+  --mantine-color-sand-9: #3f2318;
+}

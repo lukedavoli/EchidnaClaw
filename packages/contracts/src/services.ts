@@ -23,6 +23,7 @@ import {
   Task,
   UsageEvent,
   approvalStateSchema,
+  usageEventSchema,
 } from './records.js';
 
 export const headStartTurnRequestSchema = z
@@ -104,7 +105,7 @@ export const analyticsOverviewSchema = z
     totalEstimatedCostUsd: z.number().finite().nonnegative(),
     totalInputTokens: z.number().int().nonnegative(),
     totalOutputTokens: z.number().int().nonnegative(),
-    events: z.array(z.custom<UsageEvent>()),
+    events: z.array(usageEventSchema),
   })
   .strict();
 
