@@ -7,8 +7,10 @@ import {
   artifactIdSchema,
   channelIdSchema,
   credentialIdSchema,
+  credentialSecretIdSchema,
   handsRunIdSchema,
   headTurnIdSchema,
+  idempotencyRecordIdSchema,
   inboundMessageIdSchema,
   isoDateTimeSchema,
   localTimeSchema,
@@ -18,6 +20,7 @@ import {
   nonNegativeNumberSchema,
   outboundMessageIdSchema,
   positiveIntegerSchema,
+  recordReferenceSchema,
   runJournalEntryIdSchema,
   runJournalIdSchema,
   sandboxSessionIdSchema,
@@ -87,6 +90,8 @@ const tokenUsageSchema = z
 
 const usageSourceSchema = z.enum(['head', 'hands', 'sandbox', 'scheduler', 'web_control_plane']);
 const journalStatusSchema = z.enum(['open', 'closed', 'failed']);
+const credentialStatusSchema = z.enum(['active', 'revoked']);
+const idempotencyStatusSchema = z.enum(['reserved', 'completed', 'expired']);
 
 export const taskStateSchema = z.enum([
   'queued',
@@ -119,8 +124,8 @@ export const scheduleStateSchema = z.enum(['active', 'paused', 'soft_deleted']);
 export const channelStateSchema = z.enum(['pending_provisioning', 'active', 'provisioning_failed', 'retired']);
 export const outboundDeliveryStateSchema = z.enum(['queued', 'sent', 'delivered', 'failed']);
 
-function createRecordSchema<TShape extends z.ZodRawShape>(
-  recordType: string,
+function createRecordSchema<TRecordType extends string, TShape extends z.ZodRawShape>(
+  recordType: TRecordType,
   idSchema: z.ZodTypeAny,
   shape: TShape,
 ) {
@@ -260,11 +265,43 @@ export const credentialRefSchema = createRecordSchema('credential_ref', credenti
   provider: nonEmptyStringSchema,
   alias: nonEmptyStringSchema,
   scope: z.enum(['agent', 'platform']),
+  status: credentialStatusSchema,
   accessPolicyRef: nonEmptyStringSchema,
   encryptionKeyRef: nonEmptyStringSchema,
   lastRotatedAt: isoDateTimeSchema.nullable(),
+  revokedAt: isoDateTimeSchema.nullable(),
   expiresAt: isoDateTimeSchema.nullable(),
 });
+
+export const credentialSecretSchema = createRecordSchema(
+  'credential_secret',
+  credentialSecretIdSchema,
+  {
+    agentId: agentIdSchema,
+    credentialId: credentialIdSchema,
+    envelopeVersion: z.literal(1),
+    encryptionAlgorithm: z.literal('AES-256-GCM'),
+    wrappingAlgorithm: z.literal('RSA-OAEP-256'),
+    keyEncryptionKeyId: nonEmptyStringSchema,
+    wrappedDataKey: nonEmptyStringSchema,
+    initializationVector: nonEmptyStringSchema,
+    authenticationTag: nonEmptyStringSchema,
+    ciphertext: nonEmptyStringSchema,
+  },
+);
+
+export const idempotencyRecordSchema = createRecordSchema(
+  'idempotency_record',
+  idempotencyRecordIdSchema,
+  {
+    agentId: agentIdSchema,
+    scope: nonEmptyStringSchema,
+    key: nonEmptyStringSchema,
+    status: idempotencyStatusSchema,
+    resultReference: recordReferenceSchema.nullable(),
+    expiresAt: isoDateTimeSchema.nullable(),
+  },
+);
 
 export const usageEventSchema = createRecordSchema('usage_event', usageEventIdSchema, {
   agentId: agentIdSchema,
@@ -337,6 +374,8 @@ export type QueueDescriptor = z.infer<typeof queueDescriptorSchema>;
 export type TokenUsage = z.infer<typeof tokenUsageSchema>;
 export type UsageSource = z.infer<typeof usageSourceSchema>;
 export type JournalStatus = z.infer<typeof journalStatusSchema>;
+export type CredentialStatus = z.infer<typeof credentialStatusSchema>;
+export type IdempotencyStatus = z.infer<typeof idempotencyStatusSchema>;
 export type TaskState = z.infer<typeof taskStateSchema>;
 export type ApprovalState = z.infer<typeof approvalStateSchema>;
 export type AgentProvisioningState = z.infer<typeof agentProvisioningStateSchema>;
@@ -358,9 +397,35 @@ export type Approval = z.infer<typeof approvalSchema>;
 export type Schedule = z.infer<typeof scheduleSchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
 export type CredentialRef = z.infer<typeof credentialRefSchema>;
+export type CredentialSecret = z.infer<typeof credentialSecretSchema>;
+export type IdempotencyRecord = z.infer<typeof idempotencyRecordSchema>;
 export type UsageEvent = z.infer<typeof usageEventSchema>;
 export type RunJournal = z.infer<typeof runJournalSchema>;
 export type RunJournalEntry = z.infer<typeof runJournalEntrySchema>;
 export type HeadTurn = z.infer<typeof headTurnSchema>;
 export type HandsRun = z.infer<typeof handsRunSchema>;
 export type SandboxSession = z.infer<typeof sandboxSessionSchema>;
+
+export const platformRecordSchema = z.discriminatedUnion('recordType', [
+  agentSchema,
+  channelSchema,
+  inboundMessageSchema,
+  outboundMessageSchema,
+  workingContextSchema,
+  taskSchema,
+  taskEnvelopeSchema,
+  approvalSchema,
+  scheduleSchema,
+  artifactSchema,
+  credentialRefSchema,
+  credentialSecretSchema,
+  idempotencyRecordSchema,
+  usageEventSchema,
+  runJournalSchema,
+  runJournalEntrySchema,
+  headTurnSchema,
+  handsRunSchema,
+  sandboxSessionSchema,
+]);
+
+export type PlatformRecord = z.infer<typeof platformRecordSchema>;

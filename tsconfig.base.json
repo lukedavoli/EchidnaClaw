@@ -28,6 +28,10 @@
         "packages/observability/src/index.ts",
         "packages/observability/dist/index.d.ts"
       ],
+      "@echidna-claw/persistence": [
+        "packages/persistence/src/index.ts",
+        "packages/persistence/dist/index.d.ts"
+      ],
       "@echidna-claw/prompting": [
         "packages/prompting/src/index.ts",
         "packages/prompting/dist/index.d.ts"

@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   agentSchema,
+  credentialSecretSchema,
   credentialRefSchema,
   handsRunSchema,
   headTurnSchema,
+  idempotencyRecordSchema,
   inboundMessageSchema,
   repositoryConfigSchema,
   sandboxSessionSchema,
@@ -65,13 +67,64 @@ describe('contracts schemas', () => {
         provider: 'google',
         alias: 'primary-gmail',
         scope: 'agent',
+        status: 'active',
         accessPolicyRef: 'vault/echidna-claw/credentials/google',
         encryptionKeyRef: 'vault/echidna-claw/keys/credentials',
         lastRotatedAt: null,
+        revokedAt: null,
         expiresAt: null,
         rawSecret: 'should-not-exist',
       }),
     ).toThrow();
+  });
+
+  it('parses encrypted credential-secret payload records without exposing plaintext', () => {
+    expect(
+      credentialSecretSchema.parse({
+        id: 'cse_step-2',
+        recordType: 'credential_secret',
+        schemaVersion: 1,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        correlation,
+        agentId: 'agt_step-2',
+        credentialId: 'crd_step-2',
+        envelopeVersion: 1,
+        encryptionAlgorithm: 'AES-256-GCM',
+        wrappingAlgorithm: 'RSA-OAEP-256',
+        keyEncryptionKeyId: 'https://vault.example/keys/credential-encryption/version',
+        wrappedDataKey: 'wrapped-key',
+        initializationVector: 'iv',
+        authenticationTag: 'tag',
+        ciphertext: 'ciphertext',
+      }),
+    ).toMatchObject({
+      credentialId: 'crd_step-2',
+      envelopeVersion: 1,
+    });
+  });
+
+  it('parses persisted idempotency records for reserve and replay flows', () => {
+    expect(
+      idempotencyRecordSchema.parse({
+        id: 'idr_step-2',
+        recordType: 'idempotency_record',
+        schemaVersion: 1,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        correlation,
+        agentId: 'agt_step-2',
+        scope: 'telegram:webhook',
+        key: 'tg-update-42',
+        status: 'completed',
+        resultReference: 'inm_step-2',
+        expiresAt: '2026-04-19T00:00:00.000Z',
+      }),
+    ).toMatchObject({
+      scope: 'telegram:webhook',
+      status: 'completed',
+      resultReference: 'inm_step-2',
+    });
   });
 
   it('connects correlation metadata across execution records', () => {

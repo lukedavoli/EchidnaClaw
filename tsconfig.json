@@ -26,6 +26,9 @@
       "path": "./packages/observability"
     },
     {
+      "path": "./packages/persistence"
+    },
+    {
       "path": "./packages/prompting"
     },
     {
@@ -33,4 +36,3 @@
     }
   ]
 }
-
