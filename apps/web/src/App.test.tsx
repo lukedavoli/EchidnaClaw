@@ -1,22 +1,28 @@
-// @vitest-environment jsdom
-
-import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { createAppRouter } from './app/router.js';
 import { App } from './App.js';
 
-describe('App', () => {
-  it('renders the control plane shell', () => {
-    render(<App />);
+function renderApp(initialEntries: string[]) {
+  return render(<App router={createAppRouter({ initialEntries })} />);
+}
 
-    expect(screen.getByRole('heading', { name: /echidnaclaw control plane/i })).toBeInTheDocument();
-    expect(screen.getByText(/step 4 workflows/i)).toBeInTheDocument();
-    expect(screen.getByText(/local-minimal/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /developer startup, verification, packaging, and branch deployment policies are wired/i,
-      ),
-    ).toBeInTheDocument();
+describe('App routes', () => {
+  it('redirects the root route to agents', async () => {
+    renderApp(['/']);
+
+    expect(await screen.findByRole('heading', { name: 'Agents' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Create agent' })).toBeInTheDocument();
+  });
+
+  it('renders the not-found page inside the shell', async () => {
+    renderApp(['/missing']);
+
+    expect(await screen.findByText('Page not found')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Return to agents' })).toHaveAttribute(
+      'href',
+      '/agents',
+    );
   });
 });

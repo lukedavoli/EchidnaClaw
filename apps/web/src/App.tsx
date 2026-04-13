@@ -1,39 +1,22 @@
-import { loadWebConfig } from '@echidna-claw/config/browser';
+import { RouterProvider } from 'react-router-dom';
+import { useState } from 'react';
 
-const config = loadWebConfig(import.meta.env as Record<string, string | undefined>);
+import { createAppQueryClient } from './app/query-client.js';
+import { AppProviders } from './app/providers.js';
+import { createAppRouter } from './app/router.js';
 
-export function App() {
+type AppProps = {
+  router?: ReturnType<typeof createAppRouter>;
+};
+
+export function App({ router }: AppProps) {
+  const [queryClient] = useState(() => createAppQueryClient());
+  const [appRouter] = useState(() => router ?? createAppRouter());
+
   return (
-    <main className="app-shell">
-      <section className="hero">
-        <p className="eyebrow">Step 4 workflows</p>
-        <h1>{config.appTitle}</h1>
-        <p className="lede">
-          The control plane shell is running with the local process loop, smoke checks, Compose
-          integration, and deployment scaffolding that later feature work will rely on.
-        </p>
-      </section>
-      <section className="facts">
-        <article>
-          <h2>API base URL</h2>
-          <code>{config.apiBaseUrl}</code>
-        </article>
-        <article>
-          <h2>App base URL</h2>
-          <code>{config.appBaseUrl}</code>
-        </article>
-        <article>
-          <h2>Runtime mode</h2>
-          <p>{config.runtimeMode}</p>
-        </article>
-        <article>
-          <h2>Workflow status</h2>
-          <p>
-            Developer startup, verification, packaging, and branch deployment policies are wired.
-          </p>
-        </article>
-      </section>
-    </main>
+    <AppProviders queryClient={queryClient}>
+      <RouterProvider router={appRouter} />
+    </AppProviders>
   );
 }
 

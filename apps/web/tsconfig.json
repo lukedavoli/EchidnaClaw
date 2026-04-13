@@ -1,8 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "composite": true,
-    "tsBuildInfoFile": "./.tsbuildinfo",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,
@@ -17,11 +15,6 @@
       "node"
     ]
   },
-  "references": [
-    {
-      "path": "../../packages/config"
-    }
-  ],
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx"

@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   agentSchema,
   credentialRefSchema,
+  errorResponseSchema,
   handsRunSchema,
   headTurnSchema,
   inboundMessageSchema,
+  readinessResponseSchema,
   repositoryConfigSchema,
   sandboxSessionSchema,
   taskSchema,
@@ -192,5 +194,39 @@ describe('contracts schemas', () => {
         },
       }),
     ).toThrow();
+  });
+
+  it('parses the shared readiness and error envelopes', () => {
+    expect(
+      readinessResponseSchema.parse({
+        dependencies: {
+          repositories: {
+            description: 'Repositories are ready.',
+            mode: 'stubbed',
+            ready: true,
+          },
+        },
+        runtimeMode: 'local-minimal',
+        service: 'api',
+        status: 'ready',
+      }),
+    ).toMatchObject({
+      status: 'ready',
+    });
+
+    expect(
+      errorResponseSchema.parse({
+        error: {
+          code: 'dependency_unavailable',
+          message: 'The dependency is offline.',
+          retryable: true,
+          traceId: 'trc_step-7',
+        },
+      }),
+    ).toMatchObject({
+      error: {
+        traceId: 'trc_step-7',
+      },
+    });
   });
 });

@@ -1,16 +1,13 @@
-import { fileURLToPath, URL } from 'node:url';
-
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import tsconfigPaths from 'vite-tsconfig-paths';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@echidna-claw/config/browser': fileURLToPath(
-        new URL('../../packages/config/src/browser.ts', import.meta.url),
-      ),
-    },
+  plugins: [react(), tsconfigPaths()],
+  test: {
+    css: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/testing/setup-tests.ts'],
   },
   preview: {
     host: '127.0.0.1',
