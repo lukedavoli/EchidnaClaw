@@ -159,7 +159,7 @@ function hydrateRepositoryEnv(): void {
     const filePath = resolve(repoRoot, fileName);
 
     if (existsSync(filePath)) {
-      loadDotenv({ override: true, path: filePath });
+      loadDotenv({ path: filePath });
     }
   }
 

@@ -4,5 +4,8 @@
 **/.turbo
 .pnpm-store
 .git
+.env
+.env.*
 *.log
 *.tsbuildinfo
+**/*.tsbuildinfo

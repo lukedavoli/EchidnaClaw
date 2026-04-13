@@ -25,10 +25,6 @@ param attachMemoryStoreEndpointOrId string = ''
 param attachDeploymentName string = 'gpt-5-4-mini'
 
 var shouldCreate = mode == 'create'
-var normalizedProjectDisplayName = empty(projectDisplayName) ? projectName : projectDisplayName
-var normalizedProjectDescription = empty(projectDescription)
-  ? 'EchidnaClaw Foundry project for ${projectName}.'
-  : projectDescription
 var normalizedEndpoint = shouldCreate
   ? 'https://${customSubDomainName}.services.ai.azure.com/api/projects/${project.name}'
   : attachEndpoint
@@ -55,11 +51,11 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-06-01' = if
   parent: account
   name: projectName
   location: location
-  tags: tags
-  properties: {
-    displayName: normalizedProjectDisplayName
-    description: normalizedProjectDescription
+  identity: {
+    type: 'SystemAssigned'
   }
+  tags: tags
+  properties: {}
 }
 
 resource deployment 'Microsoft.CognitiveServices/accounts/deployments@2025-06-01' = if (shouldCreate) {

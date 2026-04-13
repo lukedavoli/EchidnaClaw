@@ -45,17 +45,58 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' e
   name: containerRegistryName
 }
 
+var containerAppsEnvironmentLogCategories = [
+  'ContainerAppConsoleLogs'
+  'ContainerAppSystemLogs'
+  'AppEnvSpringAppConsoleLogs'
+  'AppEnvSessionConsoleLogs'
+  'AppEnvSessionPoolEventLogs'
+  'AppEnvSessionLifeCycleLogs'
+]
+
+var cosmosLogCategories = [
+  'DataPlaneRequests'
+  'DataPlaneRequests5M'
+  'DataPlaneRequests15M'
+  'MongoRequests'
+  'QueryRuntimeStatistics'
+  'PartitionKeyStatistics'
+  'PartitionKeyRUConsumption'
+  'ControlPlaneRequests'
+  'CassandraRequests'
+  'GremlinRequests'
+  'TableApiRequests'
+]
+
+var cosmosMetricCategories = [
+  'SLI'
+  'Requests'
+]
+
+var storageMetricCategories = [
+  'Capacity'
+  'Transaction'
+]
+
+var keyVaultLogCategories = [
+  'AuditEvent'
+  'AzurePolicyEvaluationDetails'
+]
+
+var containerRegistryLogCategories = [
+  'ContainerRegistryRepositoryEvents'
+  'ContainerRegistryLoginEvents'
+]
+
 resource containerAppsEnvironmentDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'send-to-log-analytics'
   scope: containerAppsEnvironment
   properties: {
     workspaceId: workspaceResourceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
+    logs: [for category in containerAppsEnvironmentLogCategories: {
+        category: category
         enabled: true
-      }
-    ]
+      }]
     metrics: [
       {
         category: 'AllMetrics'
@@ -70,12 +111,6 @@ resource apiAppDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-pre
   scope: apiApp
   properties: {
     workspaceId: workspaceResourceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
     metrics: [
       {
         category: 'AllMetrics'
@@ -90,12 +125,6 @@ resource sandboxAppDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01
   scope: sandboxApp
   properties: {
     workspaceId: workspaceResourceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
     metrics: [
       {
         category: 'AllMetrics'
@@ -110,15 +139,9 @@ resource handsJobDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-p
   scope: handsJob
   properties: {
     workspaceId: workspaceResourceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
     metrics: [
       {
-        category: 'AllMetrics'
+        category: 'Basic'
         enabled: true
       }
     ]
@@ -130,15 +153,9 @@ resource schedulerJobDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-
   scope: schedulerJob
   properties: {
     workspaceId: workspaceResourceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
     metrics: [
       {
-        category: 'AllMetrics'
+        category: 'Basic'
         enabled: true
       }
     ]
@@ -150,18 +167,14 @@ resource cosmosDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-pre
   scope: cosmosAccount
   properties: {
     workspaceId: workspaceResourceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
+    logs: [for category in cosmosLogCategories: {
+        category: category
         enabled: true
-      }
-    ]
-    metrics: [
-      {
-        category: 'AllMetrics'
+      }]
+    metrics: [for category in cosmosMetricCategories: {
+        category: category
         enabled: true
-      }
-    ]
+      }]
   }
 }
 
@@ -170,18 +183,10 @@ resource storageDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-pr
   scope: storageAccount
   properties: {
     workspaceId: workspaceResourceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
+    metrics: [for category in storageMetricCategories: {
+        category: category
         enabled: true
-      }
-    ]
-    metrics: [
-      {
-        category: 'AllMetrics'
-        enabled: true
-      }
-    ]
+      }]
   }
 }
 
@@ -190,12 +195,10 @@ resource keyVaultDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-p
   scope: keyVault
   properties: {
     workspaceId: workspaceResourceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
+    logs: [for category in keyVaultLogCategories: {
+        category: category
         enabled: true
-      }
-    ]
+      }]
     metrics: [
       {
         category: 'AllMetrics'
@@ -210,12 +213,10 @@ resource containerRegistryDiagnostics 'Microsoft.Insights/diagnosticSettings@202
   scope: containerRegistry
   properties: {
     workspaceId: workspaceResourceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
+    logs: [for category in containerRegistryLogCategories: {
+        category: category
         enabled: true
-      }
-    ]
+      }]
     metrics: [
       {
         category: 'AllMetrics'

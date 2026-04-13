@@ -51,7 +51,7 @@ resource sqlRoleAssignments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssign
     properties: {
       principalId: principalId
       roleDefinitionId: cosmosDataContributorRoleDefinitionId
-      scope: '/dbs/${databaseName}'
+      scope: databaseAccount.id
     }
     dependsOn: [
       sqlDatabase
