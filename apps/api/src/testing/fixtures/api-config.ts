@@ -36,6 +36,8 @@ export function createTestApiConfig(
     serviceName: 'api',
     sharedCloud: null,
     telegram: {
+      apiBaseUrl: 'https://api.telegram.org',
+      requestTimeoutMs: 10000,
       webhookSecretToken: 'local-telegram-webhook-token',
     },
     webPublicBaseUrl: 'http://127.0.0.1:5173',

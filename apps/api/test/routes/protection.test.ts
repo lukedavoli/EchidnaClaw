@@ -28,7 +28,7 @@ describe('protected route groups', () => {
     const response = await app.inject({
       method: 'POST',
       payload: { update_id: 1 },
-      url: '/api/channels/telegram/webhook',
+      url: '/api/channels/telegram/chn_test-channel/webhook',
     });
 
     expect(response.statusCode).toBe(401);
@@ -84,7 +84,7 @@ describe('protected route groups', () => {
     expect(response.json().error.code).toBe('validation_failed');
   });
 
-  it('accepts the Telegram protection header and reaches the placeholder handler', async () => {
+  it('accepts the Telegram protection header and reaches the Telegram ingress path', async () => {
     const config = createTestApiConfig();
     const app = buildApiServer(config);
     apps.push(app);
@@ -95,17 +95,26 @@ describe('protected route groups', () => {
       },
       method: 'POST',
       payload: {
-        callback_query: {
-          data: 'approval:apr_approval-1',
+        message: {
+          chat: {
+            id: 'chat-1',
+            type: 'private',
+          },
+          from: {
+            id: 'user-1',
+          },
+          message_id: 1,
+          text: 'hello',
         },
-        correlation: createCorrelation(),
         update_id: 1,
       },
-      url: '/api/channels/telegram/webhook',
+      url: '/api/channels/telegram/chn_test-channel/webhook',
     });
 
-    expect(response.statusCode).toBe(501);
-    expect(response.json().error.code).toBe('not_implemented_yet');
-    expect(response.json().error.traceId).toBe('trc_trace-1');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      accepted: true,
+      kind: 'webhook',
+    });
   });
 });

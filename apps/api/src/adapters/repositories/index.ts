@@ -2,13 +2,18 @@ import type { AnalyticsOverview, ApprovalId, ApprovalState } from '@echidna-claw
 import {
   createAzureRepositorySuite,
   createInMemoryRepositorySuite,
+  type AgentRepository,
   type AgentRegistryRepository,
+  type ChannelRepository,
+  type CredentialRepository,
+  type MessageRepository,
 } from '@echidna-claw/persistence';
 
 import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
 import { NotImplementedYetError } from '../../http/errors.js';
 
 export interface RepositoryBundle {
+  agents: AgentRepository;
   agentRegistry: AgentRegistryRepository;
   analytics: {
     getOverview(): Promise<AnalyticsOverview>;
@@ -16,6 +21,9 @@ export interface RepositoryBundle {
   approvals: {
     getState(approvalId: ApprovalId): Promise<ApprovalState>;
   };
+  channels: ChannelRepository;
+  credentials: CredentialRepository;
+  messages: MessageRepository;
 }
 
 export function createRepositoryBundle(config: ApiRuntimeConfig): {
@@ -53,6 +61,7 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
       ready: true,
     },
     repositories: {
+      agents: suite.agents,
       agentRegistry: suite.agentRegistry,
       analytics: {
         async getOverview(): Promise<AnalyticsOverview> {
@@ -60,10 +69,14 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
         },
       },
       approvals: {
-        async getState(_approvalId: ApprovalId): Promise<ApprovalState> {
+        async getState(approvalId: ApprovalId): Promise<ApprovalState> {
+          void approvalId;
           throw new NotImplementedYetError('Approval persistence is reserved for Step 16.');
         },
       },
+      channels: suite.channels,
+      credentials: suite.credentials,
+      messages: suite.messages,
     },
   };
 }

@@ -23,6 +23,7 @@ import {
   createHandsRun,
   createIdempotencyRecord,
   createInboundMessage,
+  createOutboundMessage,
   createRepositorySuite,
   createRunJournal,
   createRunJournalEntry,
@@ -205,7 +206,9 @@ describe('repository suite contracts', () => {
       channel: {
         ...createdChannel.value,
         lastInboundSequence: message.sequence,
+        lastInboundExternalMessageId: message.externalMessageId,
         lastExternalMessageId: message.externalMessageId,
+        lastInboundReceivedAt: message.receivedAt,
         updatedAt: message.receivedAt,
       },
       channelEtag: createdChannel.etag,
@@ -215,6 +218,7 @@ describe('repository suite contracts', () => {
 
     expect(appended.replayed).toBe(false);
     expect(appended.channel.value.lastInboundSequence).toBe(1);
+    expect(appended.channel.value.lastInboundExternalMessageId).toBe(message.externalMessageId);
 
     const replayed = await repositories.messages.appendInboundMessage({
       channel: {
@@ -229,6 +233,36 @@ describe('repository suite contracts', () => {
     expect(replayed.replayed).toBe(true);
     expect(replayed.message.value.id).toBe(message.id);
     expect(replayed.idempotencyRecord.value.resultReference).toBe(message.id);
+  });
+
+  it('updates outbound delivery state and channel bookkeeping atomically', async () => {
+    const { repositories } = createTestSuite();
+    await repositories.agents.create(createAgent());
+    const createdChannel = await repositories.channels.create(createChannel());
+    const createdOutbound = await repositories.messages.createOutboundMessage(createOutboundMessage());
+
+    const saved = await repositories.messages.saveOutboundDelivery({
+      channel: {
+        ...createdChannel.value,
+        lastOutboundExternalMessageId: 'telegram-outbound-1',
+        lastOutboundSentAt: '2026-04-12T00:05:00.000Z',
+        updatedAt: '2026-04-12T00:05:00.000Z',
+      },
+      channelEtag: createdChannel.etag,
+      message: {
+        ...createdOutbound.value,
+        deliveryState: 'sent',
+        externalMessageId: 'telegram-outbound-1',
+        sentAt: '2026-04-12T00:05:00.000Z',
+        updatedAt: '2026-04-12T00:05:00.000Z',
+      },
+      messageEtag: createdOutbound.etag,
+    });
+
+    expect(saved.message.value.deliveryState).toBe('sent');
+    expect(saved.message.value.externalMessageId).toBe('telegram-outbound-1');
+    expect(saved.channel?.value.lastOutboundExternalMessageId).toBe('telegram-outbound-1');
+    expect(saved.channel?.value.lastOutboundSentAt).toBe('2026-04-12T00:05:00.000Z');
   });
 
   it('creates approvals and related task transitions atomically', async () => {

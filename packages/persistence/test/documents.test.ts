@@ -44,6 +44,23 @@ describe('persistence document mappers', () => {
     expect(roundTripped).toEqual(task);
   });
 
+  it('ignores Cosmos system metadata when parsing persisted documents', () => {
+    const task = createTask({
+      queue: { priority: 'high' },
+    });
+
+    const roundTripped = fromPersistedRecordDocument({
+      ...toPersistedRecordDocument(task),
+      _attachments: 'attachments/',
+      _etag: '"0x8DA123"',
+      _rid: 'rid',
+      _self: 'dbs/db/colls/coll/docs/doc',
+      _ts: 1_776_073_200,
+    });
+
+    expect(roundTripped).toEqual(task);
+  });
+
   it('rejects persisted documents whose envelope drifts from derived storage fields', () => {
     const task = createTask();
     const persisted = toPersistedRecordDocument(task);

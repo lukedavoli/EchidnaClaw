@@ -19,12 +19,17 @@ import {
   canStartHandsRun,
   canStartHeadTurn,
   createAgentRegistryRecords,
+  createDeterministicInboundMessageId,
+  createDeterministicOutboundMessageId,
   createDeterministicAgentId,
   createDeterministicPrimaryChannelId,
   createInboundMessageIdempotencyKey,
+  createTelegramChannelUpdateKey,
   createSandboxSessionIdempotencyKey,
   createScheduleOccurrenceKey,
   createTaskCreationIdempotencyKey,
+  decodeTelegramCallbackData,
+  encodeTelegramCallbackData,
   recordAgentProvisioningFailure,
   resetAgentProvisioningForRetry,
   restoreAgent,
@@ -337,6 +342,26 @@ describe('domain invariants and helpers', () => {
     expect(createTaskCreationIdempotencyKey('agt_domain', 'Check deployment', null)).toContain('idem_');
     expect(createSandboxSessionIdempotencyKey('hnd_domain', 'standard')).toContain('idem_');
     expect(createScheduleOccurrenceKey('sch_domain', timestamp)).toContain('occ_');
+  });
+
+  it('builds deterministic Telegram message identifiers and callback payloads', () => {
+    expect(createDeterministicInboundMessageId('agt_domain', 'tg-123')).toContain('inm_');
+    expect(createDeterministicOutboundMessageId('agt_domain', 'idem_dispatch-1')).toContain('out_');
+    expect(createTelegramChannelUpdateKey('agt_domain', 'tg-123')).toContain('upd_');
+
+    const encoded = encodeTelegramCallbackData({
+      approvalId: 'apr_domain',
+      decision: 'approve',
+      kind: 'approval_decision',
+      label: 'Approve',
+    });
+    expect(encoded).toBe('ec1|a|apr_domain|y');
+    expect(decodeTelegramCallbackData(encoded)).toEqual({
+      approvalId: 'apr_domain',
+      decision: 'approve',
+      kind: 'approval_decision',
+    });
+    expect(decodeTelegramCallbackData('ec1|a|bad|y')).toBeNull();
   });
 
   it('creates deterministic registry records and resets failed provisioning for retry', () => {

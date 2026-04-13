@@ -11,6 +11,7 @@ import { type PersistedRecordStore } from './store.js';
 
 export interface ChannelRepository {
   create(channel: Channel): Promise<StoredRecord<Channel>>;
+  getById(channelId: ChannelId): Promise<StoredRecord<Channel> | null>;
   get(agentId: AgentId, channelId: ChannelId): Promise<StoredRecord<Channel> | null>;
   listByAgent(agentId: AgentId): Promise<StoredRecord<Channel>[]>;
   findByExternalIdentity(input: {
@@ -26,6 +27,17 @@ export class DefaultChannelRepository implements ChannelRepository {
 
   async create(channel: Channel): Promise<StoredRecord<Channel>> {
     return this.store.create(channelSchema.parse(channel));
+  }
+
+  async getById(channelId: ChannelId): Promise<StoredRecord<Channel> | null> {
+    const results = await this.store.query({
+      containerName: operationalContainerName,
+      schema: channelSchema,
+      where: [eq('recordType', 'channel'), eq('id', channelId)],
+      limit: 1,
+    });
+
+    return results[0] ?? null;
   }
 
   async get(agentId: AgentId, channelId: ChannelId): Promise<StoredRecord<Channel> | null> {

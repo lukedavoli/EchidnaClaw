@@ -164,6 +164,9 @@ export function createPlaceholderPrimaryChannelRecord(input: {
     botUserId: undefined,
     botDisplayName: undefined,
     credentialId: undefined,
+    trustedExternalUserId: undefined,
+    trustedExternalUserHandle: undefined,
+    trustedExternalDisplayName: undefined,
     provisioningRequestedAt: input.createdAt,
     provisioningStartedAt: null,
     boundAt: null,
@@ -173,6 +176,10 @@ export function createPlaceholderPrimaryChannelRecord(input: {
     recoveryAttemptCount: 0,
     lastRecoveryRequestedAt: null,
     lastInboundSequence: 0,
+    lastInboundReceivedAt: null,
+    lastOutboundSentAt: null,
+    lastInboundExternalMessageId: undefined,
+    lastOutboundExternalMessageId: undefined,
     lastExternalMessageId: undefined,
   };
 }

@@ -15,7 +15,8 @@ export function createHandsRuntimeService(options: {
   logger: Logger;
 }): HandsService {
   return {
-    async completeTask(_task: Task): Promise<Task> {
+    async completeTask(task: Task): Promise<Task> {
+      void task;
       throw new NotImplementedYetError('Hands task completion is reserved for Step 13.');
     },
     async releaseForUser(input: HandsReleaseForUserRequest): Promise<HandsRun> {

@@ -89,12 +89,14 @@ export function createAdminAgentSummaryFixture(input: {
     input.primaryChannel === null || input.primaryChannel === undefined
       ? input.primaryChannel
       : (() => {
-          const { conversationUrl: _conversationUrl, ...channelOverrides } = input.primaryChannel as Partial<
-            Channel & {
-              conversationUrl?: string;
-            }
-          >;
-
+          const channelOverrides = {
+            ...(input.primaryChannel as Partial<
+              Channel & {
+                conversationUrl?: string;
+              }
+            >),
+          };
+          delete channelOverrides.conversationUrl;
           return channelOverrides;
         })();
   const primaryChannel =

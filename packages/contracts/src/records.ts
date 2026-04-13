@@ -50,8 +50,28 @@ const externalReferenceSchema = z
 
 const messageBodySchema = z
   .object({
-    text: nonEmptyStringSchema,
+    text: z.string().trim().default(''),
     artifacts: z.array(artifactLinkSchema).default([]),
+  })
+  .strict();
+
+export const inboundMessageKindSchema = z.enum(['text', 'callback_query', 'unsupported']);
+
+export const telegramMessageSenderSchema = z
+  .object({
+    provider: z.literal('telegram'),
+    externalUserId: nonEmptyStringSchema,
+    externalUserHandle: nonEmptyStringSchema.optional(),
+    displayName: nonEmptyStringSchema.optional(),
+  })
+  .strict();
+
+export const outboundMessageActionSchema = z
+  .object({
+    kind: z.literal('approval_decision'),
+    approvalId: approvalIdSchema,
+    decision: z.enum(['approve', 'reject']),
+    label: nonEmptyStringSchema,
   })
   .strict();
 
@@ -170,6 +190,9 @@ export const channelSchema = createRecordSchema('channel', channelIdSchema, {
   botUserId: nonEmptyStringSchema.optional(),
   botDisplayName: nonEmptyStringSchema.optional(),
   credentialId: credentialIdSchema.optional(),
+  trustedExternalUserId: nonEmptyStringSchema.optional(),
+  trustedExternalUserHandle: nonEmptyStringSchema.optional(),
+  trustedExternalDisplayName: nonEmptyStringSchema.optional(),
   provisioningRequestedAt: isoDateTimeSchema,
   provisioningStartedAt: isoDateTimeSchema.nullable().default(null),
   boundAt: isoDateTimeSchema.nullable().default(null),
@@ -179,6 +202,10 @@ export const channelSchema = createRecordSchema('channel', channelIdSchema, {
   recoveryAttemptCount: z.number().int().nonnegative().default(0),
   lastRecoveryRequestedAt: isoDateTimeSchema.nullable().default(null),
   lastInboundSequence: messageSequenceSchema,
+  lastInboundReceivedAt: isoDateTimeSchema.nullable().default(null),
+  lastOutboundSentAt: isoDateTimeSchema.nullable().default(null),
+  lastInboundExternalMessageId: nonEmptyStringSchema.optional(),
+  lastOutboundExternalMessageId: nonEmptyStringSchema.optional(),
   lastExternalMessageId: nonEmptyStringSchema.optional(),
 });
 
@@ -186,10 +213,15 @@ export const inboundMessageSchema = createRecordSchema('inbound_message', inboun
   agentId: agentIdSchema,
   channelId: channelIdSchema,
   sequence: positiveIntegerSchema,
+  kind: inboundMessageKindSchema.default('text'),
   receivedAt: isoDateTimeSchema,
+  externalChatId: nonEmptyStringSchema.optional(),
   externalMessageId: nonEmptyStringSchema.optional(),
   externalUpdateId: nonEmptyStringSchema.optional(),
   trusted: z.boolean(),
+  sender: telegramMessageSenderSchema.optional(),
+  callbackData: nonEmptyStringSchema.optional(),
+  unsupportedType: nonEmptyStringSchema.optional(),
   body: messageBodySchema,
 });
 
@@ -199,8 +231,13 @@ export const outboundMessageSchema = createRecordSchema('outbound_message', outb
   inReplyToInboundMessageId: inboundMessageIdSchema.optional(),
   deliveryState: outboundDeliveryStateSchema,
   requestedAt: isoDateTimeSchema,
+  sentAt: isoDateTimeSchema.nullable().default(null),
+  failedAt: isoDateTimeSchema.nullable().default(null),
   deliveredAt: isoDateTimeSchema.nullable(),
   externalMessageId: nonEmptyStringSchema.optional(),
+  failureCode: nonEmptyStringSchema.optional(),
+  failureMessage: nonEmptyStringSchema.optional(),
+  actions: z.array(outboundMessageActionSchema).default([]),
   body: messageBodySchema,
 });
 
@@ -386,6 +423,9 @@ export const sandboxSessionSchema = createRecordSchema('sandbox_session', sandbo
 export type ArtifactLink = z.infer<typeof artifactLinkSchema>;
 export type ExternalReference = z.infer<typeof externalReferenceSchema>;
 export type MessageBody = z.infer<typeof messageBodySchema>;
+export type InboundMessageKind = z.infer<typeof inboundMessageKindSchema>;
+export type TelegramMessageSender = z.infer<typeof telegramMessageSenderSchema>;
+export type OutboundMessageAction = z.infer<typeof outboundMessageActionSchema>;
 export type RequestedBy = z.infer<typeof requestedBySchema>;
 export type NormalizedRecurrence = z.infer<typeof recurrenceSchema>;
 export type QueueDescriptor = z.infer<typeof queueDescriptorSchema>;

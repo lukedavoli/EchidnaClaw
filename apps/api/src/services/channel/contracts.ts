@@ -1,34 +1,64 @@
-import type { AgentId, ChannelId, CorrelationMetadata } from '@echidna-claw/contracts';
+import type {
+  ChannelActionResponse,
+  ChannelId,
+  OutboundMessage,
+  SendChannelMessageRequest,
+  TrustedChannelIngressDispatchRequest,
+} from '@echidna-claw/contracts';
 
-export type TelegramWebhookUpdate = {
-  callback_query?: Record<string, unknown> & {
-    data?: string;
-  };
-  message?: Record<string, unknown>;
-  update_id?: number;
+export type TelegramWebhookUser = {
+  first_name?: string;
+  id: number | string;
+  is_bot?: boolean;
+  last_name?: string;
+  username?: string;
 } & Record<string, unknown>;
 
-export type TelegramApprovalCallbackUpdate = TelegramWebhookUpdate & {
-  callback_query: Record<string, unknown> & {
-    data: string;
-  };
-};
+export type TelegramWebhookChat = {
+  first_name?: string;
+  id: number | string;
+  last_name?: string;
+  title?: string;
+  type: string;
+  username?: string;
+} & Record<string, unknown>;
 
-export type OutboundMessageRequest = {
-  agentId: AgentId;
-  channelId: ChannelId;
-  correlation: CorrelationMetadata;
-  text: string;
-};
+export type TelegramWebhookMessage = {
+  chat: TelegramWebhookChat;
+  date?: number;
+  from?: TelegramWebhookUser;
+  message_id: number;
+  text?: string;
+} & Record<string, unknown>;
+
+export type TelegramWebhookCallbackQuery = {
+  data?: string;
+  from: TelegramWebhookUser;
+  id: string;
+  message?: TelegramWebhookMessage;
+} & Record<string, unknown>;
+
+export type TelegramWebhookUpdate = {
+  callback_query?: TelegramWebhookCallbackQuery;
+  message?: TelegramWebhookMessage;
+  update_id: number;
+} & Record<string, unknown>;
 
 export interface TelegramIngressService {
-  handleWebhook(update: TelegramWebhookUpdate): Promise<void>;
+  handleWebhook(input: {
+    channelId: ChannelId;
+    update: TelegramWebhookUpdate;
+  }): Promise<void>;
 }
 
 export interface OutboundMessagingService {
-  sendMessage(input: OutboundMessageRequest): Promise<void>;
+  sendMessage(input: SendChannelMessageRequest): Promise<OutboundMessage>;
 }
 
 export interface ApprovalCallbackService {
-  handleTelegramCallback(update: TelegramApprovalCallbackUpdate): Promise<void>;
+  handleActionResponse(input: ChannelActionResponse): Promise<void>;
+}
+
+export interface TrustedChannelIngressDispatcher {
+  dispatchTrustedInboundMessage(input: TrustedChannelIngressDispatchRequest): Promise<void>;
 }

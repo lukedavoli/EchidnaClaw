@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   adminAgentSummarySchema,
   agentSchema,
+  channelActionResponseSchema,
   credentialSecretSchema,
   credentialRefSchema,
   errorResponseSchema,
@@ -10,9 +11,11 @@ import {
   headTurnSchema,
   idempotencyRecordSchema,
   inboundMessageSchema,
+  outboundMessageSchema,
   readinessResponseSchema,
   repositoryConfigSchema,
   sandboxSessionSchema,
+  sendChannelMessageRequestSchema,
   taskSchema,
 } from '../src/index.js';
 
@@ -272,6 +275,80 @@ describe('contracts schemas', () => {
     expect(headTurn.correlation.inboundMessageId).toBe(inboundMessage.id);
     expect(handsRun.correlation.taskId).toBe(task.id);
     expect(sandboxSession.correlation.handsRunId).toBe(handsRun.id);
+  });
+
+  it('parses Telegram outbound commands and callback action responses', () => {
+    expect(
+      sendChannelMessageRequestSchema.parse({
+        actions: [
+          {
+            approvalId: 'apr_step-9',
+            decision: 'approve',
+            kind: 'approval_decision',
+            label: 'Approve',
+          },
+        ],
+        agentId: 'agt_step-2',
+        channelId: 'chn_step-2',
+        correlation,
+        inReplyToInboundMessageId: 'inm_step-2',
+        text: 'Approve the deployment restart?',
+      }),
+    ).toMatchObject({
+      actions: [
+        {
+          kind: 'approval_decision',
+        },
+      ],
+    });
+
+    expect(
+      outboundMessageSchema.parse({
+        actions: [
+          {
+            approvalId: 'apr_step-9',
+            decision: 'reject',
+            kind: 'approval_decision',
+            label: 'Reject',
+          },
+        ],
+        agentId: 'agt_step-2',
+        body: {
+          text: 'Awaiting approval.',
+        },
+        channelId: 'chn_step-2',
+        correlation,
+        createdAt: timestamp,
+        deliveredAt: null,
+        deliveryState: 'sent',
+        externalMessageId: 'telegram-99',
+        failedAt: null,
+        id: 'out_step-9',
+        recordType: 'outbound_message',
+        requestedAt: timestamp,
+        schemaVersion: 1,
+        sentAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    ).toMatchObject({
+      deliveryState: 'sent',
+      externalMessageId: 'telegram-99',
+    });
+
+    expect(
+      channelActionResponseSchema.parse({
+        agentId: 'agt_step-2',
+        approvalId: 'apr_step-9',
+        channelId: 'chn_step-2',
+        correlation,
+        decision: 'approve',
+        inboundMessageId: 'inm_step-2',
+        kind: 'approval_decision',
+      }),
+    ).toMatchObject({
+      decision: 'approve',
+      kind: 'approval_decision',
+    });
   });
 
   it('enforces repository-config invariants', () => {

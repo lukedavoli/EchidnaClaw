@@ -2,7 +2,6 @@ import { errorResponseSchema, readinessResponseSchema } from '@echidna-claw/cont
 import { describe, expect, it, vi } from 'vitest';
 
 import { createWebApiClient } from './client.js';
-import { ApiClientError } from './errors.js';
 
 describe('web api client', () => {
   it('accepts readiness responses even when the API returns 503', async () => {

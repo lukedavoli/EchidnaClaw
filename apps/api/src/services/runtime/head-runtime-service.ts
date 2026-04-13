@@ -3,24 +3,31 @@ import type {
   HeadStartTurnRequest,
   HeadSupersedeTurnRequest,
   HeadTurn,
-  OutboundMessage,
+  SendChannelMessageRequest,
   Task,
 } from '@echidna-claw/contracts';
 import type { Logger } from '@echidna-claw/observability';
 
 import type { HeadRuntimeAdapter } from '../../adapters/foundry/index.js';
+import type { OutboundMessagingService } from '../channel/contracts.js';
 import { NotImplementedYetError } from '../../http/errors.js';
 
 export function createHeadRuntimeService(options: {
   headRuntime: HeadRuntimeAdapter;
   logger: Logger;
+  outboundMessagingService: OutboundMessagingService;
 }): HeadService {
   return {
-    async createTask(_task: Task): Promise<Task> {
+    async createTask(task: Task): Promise<Task> {
+      void task;
       throw new NotImplementedYetError('Head task creation is reserved for Step 12.');
     },
-    async sendMessage(_message: OutboundMessage): Promise<OutboundMessage> {
-      throw new NotImplementedYetError('Head outbound messaging is reserved for Step 9.');
+    async sendMessage(message: SendChannelMessageRequest) {
+      options.logger.info('head_runtime.send_message', {
+        agentId: message.agentId,
+        channelId: message.channelId,
+      });
+      return options.outboundMessagingService.sendMessage(message);
     },
     async startTurn(input: HeadStartTurnRequest): Promise<HeadTurn> {
       options.logger.info('head_runtime.start_turn', {

@@ -4,7 +4,10 @@ import type { LoggerFactory } from '@echidna-claw/observability';
 import { createExternalAdapters } from '../adapters/index.js';
 import type { ApiRuntimeConfig } from '../config/api-runtime-config.js';
 import { createWebControlPlaneService } from '../services/admin/web-control-plane-service.js';
-import { createApprovalCallbackService } from '../services/channel/approval-callback-service.js';
+import {
+  createApprovalActionDispatcher,
+  createTrustedChannelIngressDispatcher,
+} from '../services/channel/dispatchers.js';
 import { createOutboundMessagingService } from '../services/channel/outbound-messaging-service.js';
 import { createTelegramIngressService } from '../services/channel/telegram-ingress-service.js';
 import { createHandsRuntimeService } from '../services/runtime/hands-runtime-service.js';
@@ -20,6 +23,17 @@ export function registerServices(options: {
   const adapters = createExternalAdapters(options.config);
   const appLogger = options.loggerFactory.createLogger({ component: 'api_app' });
   const repositoryConfig = loadRepositoryConfig();
+  const approvalCallbackService = createApprovalActionDispatcher({
+    logger: options.loggerFactory.createLogger({ service: 'approval_callback' }),
+  });
+  const outboundMessagingService = createOutboundMessagingService({
+    logger: options.loggerFactory.createLogger({ service: 'outbound_messaging' }),
+    repositories: adapters.adapters.repositories,
+    telegramBotApi: adapters.adapters.telegramBotApi,
+  });
+  const trustedChannelIngressDispatcher = createTrustedChannelIngressDispatcher({
+    logger: options.loggerFactory.createLogger({ service: 'trusted_channel_ingress' }),
+  });
 
   return {
     adapters: adapters.adapters,
@@ -33,21 +47,16 @@ export function registerServices(options: {
     },
     repositoryConfig,
     services: {
-      approvalCallbackService: createApprovalCallbackService({
-        logger: options.loggerFactory.createLogger({ service: 'approval_callback' }),
-        telegramTransport: adapters.adapters.telegramTransport,
-      }),
+      approvalCallbackService,
       handsRuntimeService: createHandsRuntimeService({
         handsJobs: adapters.adapters.handsJobs,
         logger: options.loggerFactory.createLogger({ service: 'hands_runtime' }),
       }),
+      outboundMessagingService,
       headRuntimeService: createHeadRuntimeService({
         headRuntime: adapters.adapters.foundry.headRuntime,
         logger: options.loggerFactory.createLogger({ service: 'head_runtime' }),
-      }),
-      outboundMessagingService: createOutboundMessagingService({
-        logger: options.loggerFactory.createLogger({ service: 'outbound_messaging' }),
-        telegramTransport: adapters.adapters.telegramTransport,
+        outboundMessagingService,
       }),
       sandboxRuntimeService: createSandboxRuntimeService({
         logger: options.loggerFactory.createLogger({ service: 'sandbox_runtime' }),
@@ -58,8 +67,11 @@ export function registerServices(options: {
         schedulerRuntime: adapters.adapters.schedulerRuntime,
       }),
       telegramIngressService: createTelegramIngressService({
+        approvalCallbackService,
         logger: options.loggerFactory.createLogger({ service: 'telegram_ingress' }),
-        telegramTransport: adapters.adapters.telegramTransport,
+        repositories: adapters.adapters.repositories,
+        telegramBotApi: adapters.adapters.telegramBotApi,
+        trustedChannelIngressDispatcher,
       }),
       webControlPlaneService: createWebControlPlaneService({
         logger: options.loggerFactory.createLogger({ service: 'web_control_plane' }),

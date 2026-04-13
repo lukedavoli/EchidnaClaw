@@ -27,19 +27,22 @@ export function createFoundryAdapters(mode: 'stubbed' | 'configured_placeholder'
   return {
     adapters: {
       headRuntime: {
-        async startTurn(_input: HeadStartTurnRequest): Promise<HeadTurn> {
+        async startTurn(input: HeadStartTurnRequest): Promise<HeadTurn> {
+          void input;
           throw new NotImplementedYetError(
             'Head prompt-agent operations are reserved for Step 10.',
           );
         },
-        async supersedeTurn(_input: HeadSupersedeTurnRequest): Promise<HeadTurn> {
+        async supersedeTurn(input: HeadSupersedeTurnRequest): Promise<HeadTurn> {
+          void input;
           throw new NotImplementedYetError(
             'Head turn supersession is reserved for Step 10.',
           );
         },
       },
       memoryStore: {
-        async appendTurnMemory(_headTurnId: string): Promise<void> {
+        async appendTurnMemory(headTurnId: string): Promise<void> {
+          void headTurnId;
           throw new NotImplementedYetError(
             'Foundry memory-store integration is reserved for Step 17.',
           );

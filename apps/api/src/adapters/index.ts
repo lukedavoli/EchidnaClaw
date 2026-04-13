@@ -11,7 +11,7 @@ import { createKeyVaultAdapters, type KeyVaultAdapters } from './key-vault/index
 import { createRepositoryBundle, type RepositoryBundle } from './repositories/index.js';
 import {
   createTelegramTransportAdapter,
-  type TelegramTransportAdapter,
+  type TelegramBotApiAdapter,
 } from './telegram/index.js';
 
 export type AdapterMode = 'configured_live' | 'configured_placeholder' | 'in_memory' | 'stubbed';
@@ -30,7 +30,7 @@ export type ExternalAdapters = {
   repositories: RepositoryBundle;
   sandboxRuntime: SandboxRuntimeAdapter;
   schedulerRuntime: SchedulerRuntimeAdapter;
-  telegramTransport: TelegramTransportAdapter;
+  telegramBotApi: TelegramBotApiAdapter;
 };
 
 export function createExternalAdapters(config: ApiRuntimeConfig): {
@@ -44,7 +44,7 @@ export function createExternalAdapters(config: ApiRuntimeConfig): {
   const keyVault = createKeyVaultAdapters(placeholderMode);
   const artifactStorage = createArtifactStorageAdapter(placeholderMode);
   const runtime = createRuntimeAdapters(placeholderMode);
-  const telegram = createTelegramTransportAdapter(placeholderMode);
+  const telegram = createTelegramTransportAdapter(config);
 
   return {
     adapters: {
@@ -55,7 +55,7 @@ export function createExternalAdapters(config: ApiRuntimeConfig): {
       repositories: repositories.repositories,
       sandboxRuntime: runtime.runtime.sandboxRuntime,
       schedulerRuntime: runtime.runtime.schedulerRuntime,
-      telegramTransport: telegram.adapter,
+      telegramBotApi: telegram.adapter,
     },
     health: {
       artifactStorage: artifactStorage.health,
@@ -65,7 +65,7 @@ export function createExternalAdapters(config: ApiRuntimeConfig): {
       repositories: repositories.health,
       sandboxRuntime: runtime.health.sandboxRuntime,
       schedulerRuntime: runtime.health.schedulerRuntime,
-      telegramTransport: telegram.health,
+      telegramBotApi: telegram.health,
     },
   };
 }

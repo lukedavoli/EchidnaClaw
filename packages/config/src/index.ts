@@ -90,6 +90,8 @@ const apiEnvSchema = sharedEnvSchema.extend({
   ECHIDNA_SANDBOX_BASE_URL: optionalUrlSchema,
   ECHIDNA_HANDS_JOB_TARGET: optionalNonEmptyStringSchema,
   ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME: optionalNonEmptyStringSchema,
+  ECHIDNA_TELEGRAM_API_BASE_URL: optionalUrlSchema,
+  ECHIDNA_TELEGRAM_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).default(10000),
   ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN: optionalNonEmptyStringSchema,
   ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: optionalNonEmptyStringSchema,
 });
@@ -179,6 +181,8 @@ export type ApiDependencyConfig = {
     baseUrl: string;
   };
   telegram: {
+    apiBaseUrl: string;
+    requestTimeoutMs: number;
     webhookSecretToken: string;
   };
 };
@@ -319,6 +323,8 @@ function resolveApiDependencyConfig(
       baseUrl: env.ECHIDNA_SANDBOX_BASE_URL ?? 'http://127.0.0.1:3002',
     },
     telegram: {
+      apiBaseUrl: env.ECHIDNA_TELEGRAM_API_BASE_URL ?? 'https://api.telegram.org',
+      requestTimeoutMs: env.ECHIDNA_TELEGRAM_REQUEST_TIMEOUT_MS,
       webhookSecretToken:
         env.ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN ?? 'local-telegram-webhook-token',
     },
@@ -346,6 +352,8 @@ function resolveApiDependencyConfig(
       baseUrl: remoteEnv.ECHIDNA_SANDBOX_BASE_URL,
     },
     telegram: {
+      apiBaseUrl: defaults.telegram.apiBaseUrl,
+      requestTimeoutMs: defaults.telegram.requestTimeoutMs,
       webhookSecretToken: remoteEnv.ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN,
     },
   };

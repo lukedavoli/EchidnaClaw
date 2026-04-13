@@ -38,6 +38,15 @@ export interface MessageRepository {
     message: InboundMessage;
   }): Promise<AppendInboundMessageResult>;
   createOutboundMessage(message: OutboundMessage): Promise<StoredRecord<OutboundMessage>>;
+  saveOutboundDelivery(input: {
+    channel?: Channel;
+    channelEtag?: string;
+    message: OutboundMessage;
+    messageEtag: string;
+  }): Promise<{
+    channel: StoredRecord<Channel> | null;
+    message: StoredRecord<OutboundMessage>;
+  }>;
   getInboundMessage(agentId: AgentId, inboundMessageId: InboundMessageId): Promise<StoredRecord<InboundMessage> | null>;
   getOutboundMessage(
     agentId: AgentId,
@@ -127,6 +136,49 @@ export class DefaultMessageRepository implements MessageRepository {
 
   async createOutboundMessage(message: OutboundMessage): Promise<StoredRecord<OutboundMessage>> {
     return this.store.create(outboundMessageSchema.parse(message));
+  }
+
+  async saveOutboundDelivery(input: {
+    channel?: Channel;
+    channelEtag?: string;
+    message: OutboundMessage;
+    messageEtag: string;
+  }): Promise<{
+    channel: StoredRecord<Channel> | null;
+    message: StoredRecord<OutboundMessage>;
+  }> {
+    const message = outboundMessageSchema.parse(input.message);
+
+    if (input.channel == null) {
+      const storedMessage = await this.store.replace(message, input.messageEtag);
+      return {
+        channel: null,
+        message: storedMessage,
+      };
+    }
+
+    if (input.channelEtag == null) {
+      throw new Error('channelEtag is required when saving outbound delivery with a channel update.');
+    }
+
+    const channel = channelSchema.parse(input.channel);
+    const [storedChannel, storedMessage] = await this.store.batch(message.agentId, [
+      {
+        kind: 'replace',
+        record: channel,
+        expectedEtag: input.channelEtag,
+      },
+      {
+        kind: 'replace',
+        record: message,
+        expectedEtag: input.messageEtag,
+      },
+    ]);
+
+    return {
+      channel: storedChannel as StoredRecord<Channel>,
+      message: storedMessage as StoredRecord<OutboundMessage>,
+    };
   }
 
   async getInboundMessage(

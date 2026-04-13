@@ -2,14 +2,15 @@ import { z } from 'zod';
 
 import { correlationMetadataSchema } from './correlation.js';
 import {
-  channelIdSchema,
-  credentialIdSchema,
   agentIdSchema,
   approvalIdSchema,
+  channelIdSchema,
+  credentialIdSchema,
   handsRunIdSchema,
   headTurnIdSchema,
   inboundMessageIdSchema,
   isoDateTimeSchema,
+  messageSequenceSchema,
   nonEmptyStringSchema,
   sandboxSessionIdSchema,
   taskEnvelopeIdSchema,
@@ -23,9 +24,9 @@ import {
   HandsRun,
   HeadTurn,
   OutboundMessage,
+  outboundMessageActionSchema,
   SandboxSession,
   Task,
-  UsageEvent,
   approvalStateSchema,
   usageEventSchema,
 } from './records.js';
@@ -174,6 +175,43 @@ export const analyticsOverviewSchema = z
   })
   .strict();
 
+export const sendChannelMessageRequestSchema = z
+  .object({
+    agentId: agentIdSchema,
+    channelId: channelIdSchema,
+    correlation: correlationMetadataSchema,
+    inReplyToInboundMessageId: inboundMessageIdSchema.optional(),
+    actions: z.array(outboundMessageActionSchema).default([]),
+    text: nonEmptyStringSchema,
+  })
+  .strict();
+
+export const trustedChannelIngressDispatchRequestSchema = z
+  .object({
+    agentId: agentIdSchema,
+    channelId: channelIdSchema,
+    inboundMessageId: inboundMessageIdSchema,
+    readThroughMessageSequence: messageSequenceSchema,
+    correlation: correlationMetadataSchema,
+  })
+  .strict();
+
+export const approvalDecisionChannelActionResponseSchema = z
+  .object({
+    kind: z.literal('approval_decision'),
+    agentId: agentIdSchema,
+    channelId: channelIdSchema,
+    approvalId: approvalIdSchema,
+    decision: z.enum(['approve', 'reject']),
+    inboundMessageId: inboundMessageIdSchema,
+    correlation: correlationMetadataSchema,
+  })
+  .strict();
+
+export const channelActionResponseSchema = z.discriminatedUnion('kind', [
+  approvalDecisionChannelActionResponseSchema,
+]);
+
 export type HeadStartTurnRequest = z.infer<typeof headStartTurnRequestSchema>;
 export type HeadSupersedeTurnRequest = z.infer<typeof headSupersedeTurnRequestSchema>;
 export type HandsStartRunRequest = z.infer<typeof handsStartRunRequestSchema>;
@@ -192,12 +230,20 @@ export type RecordAgentProvisioningFailureRequest = z.infer<
   typeof recordAgentProvisioningFailureRequestSchema
 >;
 export type AnalyticsOverview = z.infer<typeof analyticsOverviewSchema>;
+export type SendChannelMessageRequest = z.infer<typeof sendChannelMessageRequestSchema>;
+export type TrustedChannelIngressDispatchRequest = z.infer<
+  typeof trustedChannelIngressDispatchRequestSchema
+>;
+export type ApprovalDecisionChannelActionResponse = z.infer<
+  typeof approvalDecisionChannelActionResponseSchema
+>;
+export type ChannelActionResponse = z.infer<typeof channelActionResponseSchema>;
 
 export interface HeadService {
   startTurn(input: HeadStartTurnRequest): Promise<HeadTurn>;
   supersedeTurn(input: HeadSupersedeTurnRequest): Promise<HeadTurn>;
   createTask(task: Task): Promise<Task>;
-  sendMessage(message: OutboundMessage): Promise<OutboundMessage>;
+  sendMessage(message: SendChannelMessageRequest): Promise<OutboundMessage>;
 }
 
 export interface HandsService {
