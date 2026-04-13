@@ -9,6 +9,7 @@ export * from './documents/mappers.js';
 export * from './documents/partition-keys.js';
 export * from './documents/query-fields.js';
 export * from './repositories/agent-repository.js';
+export * from './repositories/agent-registry-repository.js';
 export * from './repositories/approval-repository.js';
 export * from './repositories/artifact-repository.js';
 export * from './repositories/channel-repository.js';

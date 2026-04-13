@@ -23,12 +23,12 @@ export interface SchedulerRuntimeAdapter {
   materializeDueSchedules(input: SchedulerMaterializeDueSchedulesRequest): Promise<Task[]>;
 }
 
-export function createRuntimeAdapters(mode: 'stubbed' | 'configured-placeholder'): {
+export function createRuntimeAdapters(mode: 'stubbed' | 'configured_placeholder'): {
   health: Record<
     'handsJobs' | 'sandboxRuntime' | 'schedulerRuntime',
     {
       description: string;
-      mode: 'stubbed' | 'configured-placeholder';
+      mode: 'stubbed' | 'configured_placeholder';
       ready: true;
     }
   >;

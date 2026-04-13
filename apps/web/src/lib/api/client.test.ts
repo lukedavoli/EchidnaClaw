@@ -13,7 +13,7 @@ describe('web api client', () => {
             dependencies: {
               repositories: {
                 description: 'Repositories are still wiring up.',
-                mode: 'stubbed',
+                mode: 'in_memory',
                 ready: false,
               },
             },

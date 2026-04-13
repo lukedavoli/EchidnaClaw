@@ -14,7 +14,7 @@ import {
   type TelegramTransportAdapter,
 } from './telegram/index.js';
 
-export type AdapterMode = 'stubbed' | 'configured-placeholder';
+export type AdapterMode = 'configured_live' | 'configured_placeholder' | 'in_memory' | 'stubbed';
 
 export type AdapterHealth = {
   description: string;
@@ -37,14 +37,14 @@ export function createExternalAdapters(config: ApiRuntimeConfig): {
   adapters: ExternalAdapters;
   health: Record<string, AdapterHealth>;
 } {
-  const mode: AdapterMode =
-    config.runtimeMode === 'local-minimal' ? 'stubbed' : 'configured-placeholder';
-  const foundry = createFoundryAdapters(mode);
-  const repositories = createRepositoryBundle(mode);
-  const keyVault = createKeyVaultAdapters(mode);
-  const artifactStorage = createArtifactStorageAdapter(mode);
-  const runtime = createRuntimeAdapters(mode);
-  const telegram = createTelegramTransportAdapter(mode);
+  const placeholderMode: 'configured_placeholder' | 'stubbed' =
+    config.runtimeMode === 'local-minimal' ? 'stubbed' : 'configured_placeholder';
+  const foundry = createFoundryAdapters(placeholderMode);
+  const repositories = createRepositoryBundle(config);
+  const keyVault = createKeyVaultAdapters(placeholderMode);
+  const artifactStorage = createArtifactStorageAdapter(placeholderMode);
+  const runtime = createRuntimeAdapters(placeholderMode);
+  const telegram = createTelegramTransportAdapter(placeholderMode);
 
   return {
     adapters: {

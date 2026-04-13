@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   approvalSchema,
+  channelSchema,
   headTurnSchema,
   handsRunSchema,
   scheduleSchema,
   taskSchema,
   type Agent,
+  type Channel,
+  type RepositoryConfig,
 } from '../../contracts/src/index.js';
 
 import {
@@ -15,14 +18,20 @@ import {
   calculateNextDueAt,
   canStartHandsRun,
   canStartHeadTurn,
+  createAgentRegistryRecords,
+  createDeterministicAgentId,
+  createDeterministicPrimaryChannelId,
   createInboundMessageIdempotencyKey,
   createSandboxSessionIdempotencyKey,
   createScheduleOccurrenceKey,
   createTaskCreationIdempotencyKey,
+  recordAgentProvisioningFailure,
+  resetAgentProvisioningForRetry,
   restoreAgent,
   softDeleteAgent,
   transitionAgentProvisioningState,
   transitionApprovalState,
+  transitionChannelState,
   transitionTaskState,
 } from '../src/index.js';
 
@@ -40,6 +49,58 @@ const correlation = {
   channelUpdateKey: 'upd_domain',
 };
 
+const repositoryConfig: RepositoryConfig = {
+  version: '1',
+  models: {
+    defaultModel: 'gpt-5.4-mini',
+    pricing: [
+      {
+        model: 'gpt-5.4-mini',
+        provider: 'azure-foundry',
+        effectiveAt: timestamp,
+        unit: '1m_tokens',
+        inputUsd: 0.2,
+        outputUsd: 0.8,
+      },
+    ],
+  },
+  agents: {
+    factoryProfile: {
+      version: 'factory-v1',
+      defaultTimeZone: 'Australia/Sydney',
+      initialResponsibilitiesSummary: 'Shared operator default profile.',
+    },
+  },
+  sandbox: {
+    defaultPolicy: 'standard',
+    policies: [
+      {
+        name: 'standard',
+        description: 'Default policy.',
+        allowFilesystemWriteUnder: ['/workspace'],
+        allowOutboundHosts: ['api.telegram.org'],
+        allowCommands: ['pnpm'],
+      },
+    ],
+    packageAllowlists: [
+      {
+        name: 'default-runtime',
+        packages: ['zod'],
+      },
+    ],
+  },
+  capabilities: {
+    registry: [
+      {
+        id: 'telegram.messaging',
+        name: 'Telegram direct messaging',
+        description: 'Direct Telegram messaging support.',
+        category: 'channel',
+      },
+    ],
+  },
+};
+
 function createAgent(): Agent {
   return {
     id: 'agt_domain',
@@ -51,6 +112,7 @@ function createAgent(): Agent {
     name: 'Scheduler Agent',
     timeZone: 'Australia/Sydney',
     headModel: 'gpt-5.4-mini',
+    primaryChannelId: 'chn_domain',
     provisioningState: 'pending_provisioning',
     lifecycleState: 'active',
     softDeletedAt: null,
@@ -58,6 +120,27 @@ function createAgent(): Agent {
     factoryProfileVersion: 'factory-v1',
     responsibilitiesSummary: '',
   };
+}
+
+function createChannel(): Channel {
+  return channelSchema.parse({
+    id: 'chn_domain',
+    recordType: 'channel',
+    schemaVersion: 1,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    correlation,
+    agentId: 'agt_domain',
+    provider: 'telegram',
+    state: 'pending_provisioning',
+    provisioningRequestedAt: timestamp,
+    provisioningStartedAt: null,
+    boundAt: null,
+    lastProvisioningFailedAt: null,
+    recoveryAttemptCount: 0,
+    lastRecoveryRequestedAt: null,
+    lastInboundSequence: 0,
+  });
 }
 
 describe('domain state machines', () => {
@@ -129,8 +212,14 @@ describe('domain state machines', () => {
 
   it('transitions provisioning and soft-delete lifecycle state', () => {
     const agent = createAgent();
+    const channel = createChannel();
     const provisioning = transitionAgentProvisioningState(
       agent,
+      'provisioning',
+      '2026-04-12T00:15:00.000Z',
+    );
+    const channelProvisioning = transitionChannelState(
+      channel,
       'provisioning',
       '2026-04-12T00:15:00.000Z',
     );
@@ -139,8 +228,14 @@ describe('domain state machines', () => {
       'active',
       '2026-04-12T00:20:00.000Z',
     );
+    const channelActive = transitionChannelState(
+      channelProvisioning,
+      'active',
+      '2026-04-12T00:20:00.000Z',
+    );
 
     expect(active.provisioningState).toBe('active');
+    expect(channelActive.state).toBe('active');
 
     const deleted = softDeleteAgent(active, '2026-04-12T02:00:00.000Z');
     expect(deleted.lifecycleState).toBe('soft_deleted');
@@ -149,6 +244,7 @@ describe('domain state machines', () => {
     const restored = restoreAgent(deleted, '2026-04-13T02:00:00.000Z');
     expect(restored.lifecycleState).toBe('active');
     expect(restored.restoredAt).toBe('2026-04-13T02:00:00.000Z');
+    expect(restored.softDeletedAt).toBeNull();
   });
 });
 
@@ -241,6 +337,53 @@ describe('domain invariants and helpers', () => {
     expect(createTaskCreationIdempotencyKey('agt_domain', 'Check deployment', null)).toContain('idem_');
     expect(createSandboxSessionIdempotencyKey('hnd_domain', 'standard')).toContain('idem_');
     expect(createScheduleOccurrenceKey('sch_domain', timestamp)).toContain('occ_');
+  });
+
+  it('creates deterministic registry records and resets failed provisioning for retry', () => {
+    const created = createAgentRegistryRecords({
+      correlation: {
+        ...correlation,
+        idempotencyKey: 'idem_domain-agent-create',
+      },
+      createdAt: timestamp,
+      name: 'Registry Agent',
+      repositoryConfig,
+    });
+
+    expect(created.agent.id).toBe(createDeterministicAgentId('idem_domain-agent-create'));
+    expect(created.agent.primaryChannelId).toBe(createDeterministicPrimaryChannelId(created.agent.id));
+    expect(created.primaryChannel.id).toBe(created.agent.primaryChannelId);
+    expect(created.primaryChannel.state).toBe('pending_provisioning');
+
+    const failed = recordAgentProvisioningFailure({
+      agent: {
+        ...created.agent,
+        provisioningState: 'provisioning',
+      },
+      primaryChannel: {
+        ...created.primaryChannel,
+        state: 'provisioning',
+        provisioningStartedAt: '2026-04-12T00:05:00.000Z',
+      },
+      failedAt: '2026-04-12T00:06:00.000Z',
+      errorCode: 'telegram_bind_failed',
+      errorMessage: 'Telegram binding failed.',
+    });
+
+    expect(failed.agent.provisioningState).toBe('provisioning_failed');
+    expect(failed.primaryChannel.state).toBe('provisioning_failed');
+    expect(failed.primaryChannel.lastProvisioningErrorCode).toBe('telegram_bind_failed');
+
+    const retried = resetAgentProvisioningForRetry({
+      agent: failed.agent,
+      primaryChannel: failed.primaryChannel,
+      requestedAt: '2026-04-12T00:10:00.000Z',
+    });
+
+    expect(retried.agent.provisioningState).toBe('pending_provisioning');
+    expect(retried.primaryChannel.state).toBe('pending_provisioning');
+    expect(retried.primaryChannel.recoveryAttemptCount).toBe(1);
+    expect(retried.primaryChannel.lastRecoveryRequestedAt).toBe('2026-04-12T00:10:00.000Z');
   });
 });
 

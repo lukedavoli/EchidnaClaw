@@ -121,7 +121,13 @@ export const handsRunStateSchema = z.enum([
 ]);
 export const sandboxSessionStateSchema = z.enum(['created', 'running', 'completed', 'failed', 'cancelled']);
 export const scheduleStateSchema = z.enum(['active', 'paused', 'soft_deleted']);
-export const channelStateSchema = z.enum(['pending_provisioning', 'active', 'provisioning_failed', 'retired']);
+export const channelStateSchema = z.enum([
+  'pending_provisioning',
+  'provisioning',
+  'provisioning_failed',
+  'active',
+  'retired',
+]);
 export const outboundDeliveryStateSchema = z.enum(['queued', 'sent', 'delivered', 'failed']);
 
 function createRecordSchema<TRecordType extends string, TShape extends z.ZodRawShape>(
@@ -146,6 +152,7 @@ export const agentSchema = createRecordSchema('agent', agentIdSchema, {
   name: nonEmptyStringSchema,
   timeZone: timeZoneSchema,
   headModel: modelIdSchema.default('gpt-5.4-mini'),
+  primaryChannelId: channelIdSchema,
   provisioningState: agentProvisioningStateSchema,
   lifecycleState: softDeleteStateSchema,
   softDeletedAt: isoDateTimeSchema.nullable(),
@@ -160,6 +167,17 @@ export const channelSchema = createRecordSchema('channel', channelIdSchema, {
   state: channelStateSchema,
   externalHandle: nonEmptyStringSchema.optional(),
   externalChatId: nonEmptyStringSchema.optional(),
+  botUserId: nonEmptyStringSchema.optional(),
+  botDisplayName: nonEmptyStringSchema.optional(),
+  credentialId: credentialIdSchema.optional(),
+  provisioningRequestedAt: isoDateTimeSchema,
+  provisioningStartedAt: isoDateTimeSchema.nullable().default(null),
+  boundAt: isoDateTimeSchema.nullable().default(null),
+  lastProvisioningFailedAt: isoDateTimeSchema.nullable().default(null),
+  lastProvisioningErrorCode: nonEmptyStringSchema.optional(),
+  lastProvisioningErrorMessage: nonEmptyStringSchema.optional(),
+  recoveryAttemptCount: z.number().int().nonnegative().default(0),
+  lastRecoveryRequestedAt: isoDateTimeSchema.nullable().default(null),
   lastInboundSequence: messageSequenceSchema,
   lastExternalMessageId: nonEmptyStringSchema.optional(),
 });

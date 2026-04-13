@@ -33,9 +33,8 @@ describe('buildApiServer', () => {
       status: 'ready',
     });
     expect(readinessResponse.json().dependencies.repositories).toEqual({
-      description:
-        'Repository adapters are stubbed until the Step 5 persistence layer is wired in.',
-      mode: 'stubbed',
+      description: 'Repository adapters use the in-memory suite for local-minimal development.',
+      mode: 'in_memory',
       ready: true,
     });
   });

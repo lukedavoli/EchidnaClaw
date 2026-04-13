@@ -1,22 +1,15 @@
-import type {
-  Agent,
-  AnalyticsOverview,
-  ApprovalId,
-  ApprovalState,
-  WebCreateAgentRequest,
-  WebRestoreAgentRequest,
-  WebSoftDeleteAgentRequest,
-} from '@echidna-claw/contracts';
+import type { AnalyticsOverview, ApprovalId, ApprovalState } from '@echidna-claw/contracts';
+import {
+  createAzureRepositorySuite,
+  createInMemoryRepositorySuite,
+  type AgentRegistryRepository,
+} from '@echidna-claw/persistence';
 
+import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
 import { NotImplementedYetError } from '../../http/errors.js';
 
 export interface RepositoryBundle {
-  agents: {
-    create(input: WebCreateAgentRequest): Promise<Agent>;
-    list(): Promise<Agent[]>;
-    restore(input: WebRestoreAgentRequest): Promise<Agent>;
-    softDelete(input: WebSoftDeleteAgentRequest): Promise<Agent>;
-  };
+  agentRegistry: AgentRegistryRepository;
   analytics: {
     getOverview(): Promise<AnalyticsOverview>;
   };
@@ -25,38 +18,42 @@ export interface RepositoryBundle {
   };
 }
 
-export function createRepositoryBundle(mode: 'stubbed' | 'configured-placeholder'): {
+export function createRepositoryBundle(config: ApiRuntimeConfig): {
   health: {
     description: string;
-    mode: 'stubbed' | 'configured-placeholder';
+    mode: 'configured_live' | 'in_memory';
     ready: true;
   };
   repositories: RepositoryBundle;
 } {
+  const suite =
+    config.runtimeMode === 'local-minimal'
+      ? createInMemoryRepositorySuite()
+      : (() => {
+          if (!config.sharedCloud) {
+            throw new Error('Shared-cloud repository configuration is required outside local-minimal mode.');
+          }
+
+          return createAzureRepositorySuite({
+            artifactsContainerName: config.sharedCloud.blobStorage.artifactsContainer,
+            blobAccountUrl: config.sharedCloud.blobStorage.accountUrl,
+            cosmosDatabaseName: config.sharedCloud.cosmosDb.databaseName,
+            cosmosEndpoint: config.sharedCloud.cosmosDb.endpoint,
+            keyEncryptionKeyId: config.sharedCloud.keyVault.keyId,
+          });
+        })();
+
   return {
     health: {
       description:
-        mode === 'stubbed'
-          ? 'Repository adapters are stubbed until the Step 5 persistence layer is wired in.'
-          : 'Repository config is present; Cosmos-backed implementations are reserved for Step 5.',
-      mode,
+        config.runtimeMode === 'local-minimal'
+          ? 'Repository adapters use the in-memory suite for local-minimal development.'
+          : 'Repository adapters are configured against the shared Azure persistence dependencies.',
+      mode: config.runtimeMode === 'local-minimal' ? 'in_memory' : 'configured_live',
       ready: true,
     },
     repositories: {
-      agents: {
-        async create(_input: WebCreateAgentRequest): Promise<Agent> {
-          throw new NotImplementedYetError('Agent persistence is reserved for Step 5.');
-        },
-        async list(): Promise<Agent[]> {
-          throw new NotImplementedYetError('Agent persistence is reserved for Step 5.');
-        },
-        async restore(_input: WebRestoreAgentRequest): Promise<Agent> {
-          throw new NotImplementedYetError('Agent restoration is reserved for Step 5.');
-        },
-        async softDelete(_input: WebSoftDeleteAgentRequest): Promise<Agent> {
-          throw new NotImplementedYetError('Agent soft-delete is reserved for Step 5.');
-        },
-      },
+      agentRegistry: suite.agentRegistry,
       analytics: {
         async getOverview(): Promise<AnalyticsOverview> {
           throw new NotImplementedYetError('Analytics aggregation is reserved for Step 18.');

@@ -4,11 +4,11 @@ export interface ArtifactStorageAdapter {
   storeArtifact(artifactName: string): Promise<string>;
 }
 
-export function createArtifactStorageAdapter(mode: 'stubbed' | 'configured-placeholder'): {
+export function createArtifactStorageAdapter(mode: 'stubbed' | 'configured_placeholder'): {
   adapter: ArtifactStorageAdapter;
   health: {
     description: string;
-    mode: 'stubbed' | 'configured-placeholder';
+    mode: 'stubbed' | 'configured_placeholder';
     ready: true;
   };
 } {

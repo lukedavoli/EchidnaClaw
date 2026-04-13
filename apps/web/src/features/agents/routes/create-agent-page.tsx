@@ -16,7 +16,7 @@ export function CreateAgentPage() {
   return (
     <Stack gap="xl">
       <PageHeader
-        description="Create a new operator-managed agent with a name, a home time zone, and the reserved provisioning state that later steps will complete."
+        description="Create a new operator-managed agent from the shared factory-default profile. Time zone is optional and acts as an override."
         title="Create agent"
       />
 
@@ -32,7 +32,7 @@ export function CreateAgentPage() {
             await createAgentMutation.mutateAsync(values);
             notifications.show({
               color: 'teal',
-              message: `${values.name} is now visible in the active roster.`,
+              message: `${values.name} is now visible in the roster with pending provisioning.`,
               title: 'Agent created',
             });
             navigate('/agents');

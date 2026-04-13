@@ -39,6 +39,14 @@ export const capabilityRegistryEntrySchema = z
   })
   .strict();
 
+export const agentFactoryProfileSchema = z
+  .object({
+    version: nonEmptyStringSchema,
+    defaultTimeZone: nonEmptyStringSchema,
+    initialResponsibilitiesSummary: z.string().trim().default(''),
+  })
+  .strict();
+
 export const repositoryConfigSchema = z
   .object({
     version: z.literal('1'),
@@ -46,6 +54,11 @@ export const repositoryConfigSchema = z
       .object({
         defaultModel: modelIdSchema,
         pricing: z.array(modelPricingSchema).min(1),
+      })
+      .strict(),
+    agents: z
+      .object({
+        factoryProfile: agentFactoryProfileSchema,
       })
       .strict(),
     sandbox: z
@@ -121,4 +134,5 @@ export type ModelPricing = z.infer<typeof modelPricingSchema>;
 export type SandboxPolicy = z.infer<typeof sandboxPolicySchema>;
 export type PackageAllowlist = z.infer<typeof packageAllowlistSchema>;
 export type CapabilityRegistryEntry = z.infer<typeof capabilityRegistryEntrySchema>;
+export type AgentFactoryProfile = z.infer<typeof agentFactoryProfileSchema>;
 export type RepositoryConfig = z.infer<typeof repositoryConfigSchema>;

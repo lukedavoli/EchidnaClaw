@@ -7,8 +7,17 @@ import type { ApiClientError } from '../../../lib/api/errors.js';
 
 const createAgentFormSchema = z.object({
   name: z.string().trim().min(1, 'A name is required.'),
-  timeZone: z.string().trim().min(1, 'A time zone is required.'),
+  timeZone: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
 });
+
+type FormState = {
+  name: string;
+  timeZone: string;
+};
 
 type FormValues = z.infer<typeof createAgentFormSchema>;
 
@@ -20,11 +29,11 @@ type CreateAgentFormProps = {
 };
 
 export function CreateAgentForm({ error, onCancel, onSubmit, submitting }: CreateAgentFormProps) {
-  const [values, setValues] = useState<FormValues>({
+  const [values, setValues] = useState<FormState>({
     name: '',
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   });
-  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,14 +42,10 @@ export function CreateAgentForm({ error, onCancel, onSubmit, submitting }: Creat
 
     if (!parsed.success) {
       const formatted = parsed.error.flatten().fieldErrors;
-      const nextErrors: Partial<Record<keyof FormValues, string>> = {};
+      const nextErrors: Partial<Record<keyof FormState, string>> = {};
 
       if (formatted.name?.[0]) {
         nextErrors.name = formatted.name[0];
-      }
-
-      if (formatted.timeZone?.[0]) {
-        nextErrors.timeZone = formatted.timeZone[0];
       }
 
       setFieldErrors(nextErrors);
@@ -66,8 +71,8 @@ export function CreateAgentForm({ error, onCancel, onSubmit, submitting }: Creat
             New agent
           </Text>
           <Text c="dimmed">
-            Agents start in a pending provisioning state. Step 8 will attach the real Telegram
-            handoff and recovery flows behind this form.
+            New agents enter the registry immediately with a placeholder Telegram channel and a
+            pending provisioning state.
           </Text>
         </Stack>
 
@@ -86,7 +91,7 @@ export function CreateAgentForm({ error, onCancel, onSubmit, submitting }: Creat
         />
 
         <TextInput
-          description="Defaults to the browser time zone, but operators can override it."
+          description="Optional override. Leave blank to use the shared factory-default time zone."
           error={fieldErrors.timeZone}
           label="Time zone"
           name="timeZone"

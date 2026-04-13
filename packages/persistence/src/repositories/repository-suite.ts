@@ -15,6 +15,10 @@ import {
 } from '../crypto/credential-envelope.js';
 import { type Clock, SystemClock } from '../testing/fake-clock.js';
 import { DefaultAgentRepository, type AgentRepository } from './agent-repository.js';
+import {
+  DefaultAgentRegistryRepository,
+  type AgentRegistryRepository,
+} from './agent-registry-repository.js';
 import { DefaultApprovalRepository, type ApprovalRepository } from './approval-repository.js';
 import { DefaultArtifactRepository, type ArtifactRepository } from './artifact-repository.js';
 import { DefaultChannelRepository, type ChannelRepository } from './channel-repository.js';
@@ -33,6 +37,7 @@ import { DefaultWorkingContextRepository, type WorkingContextRepository } from '
 
 export interface RepositorySuite {
   agents: AgentRepository;
+  agentRegistry: AgentRegistryRepository;
   approvals: ApprovalRepository;
   artifacts: ArtifactRepository;
   channels: ChannelRepository;
@@ -68,16 +73,19 @@ export interface AzureRepositorySuiteOptions {
 
 export function createRepositorySuite(dependencies: RepositorySuiteDependencies): RepositorySuite {
   const clock = dependencies.clock ?? new SystemClock();
+  const agents = new DefaultAgentRepository(dependencies.recordStore);
+  const channels = new DefaultChannelRepository(dependencies.recordStore);
 
   return {
-    agents: new DefaultAgentRepository(dependencies.recordStore),
+    agents,
+    agentRegistry: new DefaultAgentRegistryRepository(dependencies.recordStore, agents, channels),
     approvals: new DefaultApprovalRepository(dependencies.recordStore),
     artifacts: new DefaultArtifactRepository(
       dependencies.recordStore,
       dependencies.artifactContentStore,
       clock,
     ),
-    channels: new DefaultChannelRepository(dependencies.recordStore),
+    channels,
     credentials: new DefaultCredentialRepository(
       dependencies.recordStore,
       dependencies.credentialEnvelopeCipher,

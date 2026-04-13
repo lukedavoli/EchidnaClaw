@@ -1,3 +1,4 @@
+export * from './agent-registry.js';
 export * from './concurrency.js';
 export * from './idempotency.js';
 export * from './scheduling.js';

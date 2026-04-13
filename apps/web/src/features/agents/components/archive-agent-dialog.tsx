@@ -19,7 +19,7 @@ const copy = {
   restore: {
     confirmLabel: 'Restore agent',
     description:
-      'This returns the agent to the active roster. Provisioning retry remains reserved until the backend lifecycle flow is available.',
+      'This returns the agent to the active roster and preserves any existing provisioning metadata.',
     title: 'Restore this agent?',
   },
 } as const;

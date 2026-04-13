@@ -41,10 +41,8 @@ function assertEnvelope(record: PlatformRecord, envelope: PersistedEnvelope): vo
 export function stripPersistenceEnvelope(
   document: Record<string, unknown> & PersistedEnvelope,
 ): Record<string, unknown> {
-  const record = { ...document };
-  delete record.partitionKey;
-  delete record.query;
-  delete record._etag;
+  const { _etag: _ignoredEtag, partitionKey: _ignoredPartitionKey, query: _ignoredQuery, ...record } =
+    document;
   return record;
 }
 

@@ -13,6 +13,13 @@
       }
     ]
   },
+  "agents": {
+    "factoryProfile": {
+      "version": "factory-v1",
+      "defaultTimeZone": "Australia/Sydney",
+      "initialResponsibilitiesSummary": "Start from the shared factory-default operator profile until scheduling and Telegram handoff are completed in later steps."
+    }
+  },
   "sandbox": {
     "defaultPolicy": "standard",
     "policies": [

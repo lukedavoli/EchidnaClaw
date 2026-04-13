@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { App } from '../../App.js';
 import { createAppRouter } from '../../app/router.js';
-import { createAgentFixture } from '../../testing/fixtures/records.js';
+import { createAdminAgentSummaryFixture } from '../../testing/fixtures/records.js';
 import { mockWebApiState } from '../../testing/msw/handlers.js';
 
 function renderApp(initialEntries: string[]) {
@@ -58,15 +58,53 @@ describe('agents page flows', () => {
 
     await screen.findByText('Ops Triage Agent');
     mockWebApiState.addAgent(
-      createAgentFixture({
-        id: 'agt_fixture-external',
-        name: 'External Agent',
-        updatedAt: '2026-04-13T12:00:00.000Z',
+      createAdminAgentSummaryFixture({
+        agent: {
+          id: 'agt_fixture-external',
+          name: 'External Agent',
+          primaryChannelId: 'chn_fixture-external',
+          updatedAt: '2026-04-13T12:00:00.000Z',
+        },
+        primaryChannel: {
+          agentId: 'agt_fixture-external',
+          id: 'chn_fixture-external',
+          updatedAt: '2026-04-13T12:00:00.000Z',
+        },
       }),
     );
 
     expect(screen.queryByText('External Agent')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
     expect(await screen.findByText('External Agent')).toBeInTheDocument();
+  });
+
+  it('retries provisioning when the primary channel is failed', async () => {
+    const user = userEvent.setup();
+    mockWebApiState.setAgents([
+      createAdminAgentSummaryFixture({
+        agent: {
+          id: 'agt_fixture-failed',
+          name: 'Failed Provisioning Agent',
+          primaryChannelId: 'chn_fixture-failed',
+          provisioningState: 'provisioning_failed',
+        },
+        primaryChannel: {
+          agentId: 'agt_fixture-failed',
+          id: 'chn_fixture-failed',
+          lastProvisioningErrorMessage: 'The managed bot could not be bound.',
+          lastProvisioningFailedAt: '2026-04-13T09:00:00.000Z',
+          state: 'provisioning_failed',
+        },
+      }),
+    ]);
+
+    renderApp(['/agents']);
+
+    const card = requireElement(
+      (await screen.findByText('Failed Provisioning Agent')).closest('[class*="mantine-Card-root"]'),
+    );
+    await user.click(within(card).getByRole('button', { name: 'Retry provisioning' }));
+
+    expect(await screen.findByText('Provisioning retry requested')).toBeInTheDocument();
   });
 });

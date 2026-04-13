@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-const dependencyHealthModeSchema = z.enum(['stubbed', 'configured-placeholder']);
+const dependencyHealthModeSchema = z.enum([
+  'stubbed',
+  'in_memory',
+  'configured_live',
+  'configured_placeholder',
+]);
 const runtimeModeSchema = z.enum(['local-minimal', 'shared-cloud', 'cloud-deployed']);
 
 export const dependencyHealthSchema = z
