@@ -1,0 +1,71 @@
+import type { ApiRuntimeConfig } from '../config/api-runtime-config.js';
+import { createArtifactStorageAdapter, type ArtifactStorageAdapter } from './blob/index.js';
+import { createFoundryAdapters, type FoundryAdapters } from './foundry/index.js';
+import {
+  createRuntimeAdapters,
+  type HandsJobTriggerAdapter,
+  type SandboxRuntimeAdapter,
+  type SchedulerRuntimeAdapter,
+} from './jobs/index.js';
+import { createKeyVaultAdapters, type KeyVaultAdapters } from './key-vault/index.js';
+import { createRepositoryBundle, type RepositoryBundle } from './repositories/index.js';
+import {
+  createTelegramTransportAdapter,
+  type TelegramTransportAdapter,
+} from './telegram/index.js';
+
+export type AdapterMode = 'stubbed' | 'configured-placeholder';
+
+export type AdapterHealth = {
+  description: string;
+  mode: AdapterMode;
+  ready: boolean;
+};
+
+export type ExternalAdapters = {
+  artifactStorage: ArtifactStorageAdapter;
+  foundry: FoundryAdapters;
+  handsJobs: HandsJobTriggerAdapter;
+  keyVault: KeyVaultAdapters;
+  repositories: RepositoryBundle;
+  sandboxRuntime: SandboxRuntimeAdapter;
+  schedulerRuntime: SchedulerRuntimeAdapter;
+  telegramTransport: TelegramTransportAdapter;
+};
+
+export function createExternalAdapters(config: ApiRuntimeConfig): {
+  adapters: ExternalAdapters;
+  health: Record<string, AdapterHealth>;
+} {
+  const mode: AdapterMode =
+    config.runtimeMode === 'local-minimal' ? 'stubbed' : 'configured-placeholder';
+  const foundry = createFoundryAdapters(mode);
+  const repositories = createRepositoryBundle(mode);
+  const keyVault = createKeyVaultAdapters(mode);
+  const artifactStorage = createArtifactStorageAdapter(mode);
+  const runtime = createRuntimeAdapters(mode);
+  const telegram = createTelegramTransportAdapter(mode);
+
+  return {
+    adapters: {
+      artifactStorage: artifactStorage.adapter,
+      foundry: foundry.adapters,
+      handsJobs: runtime.runtime.handsJobs,
+      keyVault: keyVault.adapters,
+      repositories: repositories.repositories,
+      sandboxRuntime: runtime.runtime.sandboxRuntime,
+      schedulerRuntime: runtime.runtime.schedulerRuntime,
+      telegramTransport: telegram.adapter,
+    },
+    health: {
+      artifactStorage: artifactStorage.health,
+      foundry: foundry.health,
+      handsJobs: runtime.health.handsJobs,
+      keyVault: keyVault.health,
+      repositories: repositories.health,
+      sandboxRuntime: runtime.health.sandboxRuntime,
+      schedulerRuntime: runtime.health.schedulerRuntime,
+      telegramTransport: telegram.health,
+    },
+  };
+}

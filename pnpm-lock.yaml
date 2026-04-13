@@ -71,9 +71,18 @@ importers:
       '@echidna-claw/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@echidna-claw/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@echidna-claw/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       fastify:
         specifier: ^5.2.1
         version: 5.8.4
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
 
   apps/hands:
     dependencies:
@@ -126,7 +135,11 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/observability: {}
+  packages/observability:
+    dependencies:
+      '@echidna-claw/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/prompting: {}
 
