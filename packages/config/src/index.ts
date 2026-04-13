@@ -20,11 +20,33 @@ const emptyStringToUndefined = (value: unknown): unknown => {
   return value;
 };
 
+const stringToBoolean = (value: unknown): unknown => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  switch (value.trim().toLowerCase()) {
+    case '1':
+    case 'true':
+    case 'yes':
+    case 'on':
+      return true;
+    case '0':
+    case 'false':
+    case 'no':
+    case 'off':
+      return false;
+    default:
+      return value;
+  }
+};
+
 const optionalNonEmptyStringSchema = z.preprocess(
   emptyStringToUndefined,
   z.string().trim().min(1).optional(),
 );
 const optionalUrlSchema = z.preprocess(emptyStringToUndefined, z.string().trim().url().optional());
+const optionalBooleanSchema = z.preprocess(stringToBoolean, z.boolean().optional());
 const requiredTrustedUserIdsSchema = z.preprocess(
   (value) => {
     if (typeof value !== 'string') {
@@ -62,6 +84,14 @@ const sharedEnvSchema = z.object({
 const apiEnvSchema = sharedEnvSchema.extend({
   ECHIDNA_API_HOST: z.string().min(1).default('127.0.0.1'),
   ECHIDNA_API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+  ECHIDNA_API_PUBLIC_BASE_URL: optionalUrlSchema,
+  ECHIDNA_API_TRUST_PROXY: optionalBooleanSchema,
+  ECHIDNA_API_REQUEST_LOGGING_ENABLED: optionalBooleanSchema,
+  ECHIDNA_SANDBOX_BASE_URL: optionalUrlSchema,
+  ECHIDNA_HANDS_JOB_TARGET: optionalNonEmptyStringSchema,
+  ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME: optionalNonEmptyStringSchema,
+  ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN: optionalNonEmptyStringSchema,
+  ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: optionalNonEmptyStringSchema,
 });
 
 const sandboxEnvSchema = sharedEnvSchema.extend({
@@ -89,6 +119,15 @@ const sharedCloudRuntimeEnvSchema = z.object({
   ECHIDNA_FOUNDRY_PROJECT_NAME: z.string().trim().min(1),
   ECHIDNA_FOUNDRY_PROJECT_ENDPOINT: z.string().trim().url(),
   ECHIDNA_MONITOR_CONNECTION_STRING: z.string().trim().min(1),
+});
+
+const apiRemoteDependencyEnvSchema = z.object({
+  ECHIDNA_API_PUBLIC_BASE_URL: z.string().trim().url(),
+  ECHIDNA_SANDBOX_BASE_URL: z.string().trim().url(),
+  ECHIDNA_HANDS_JOB_TARGET: z.string().trim().min(1),
+  ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME: z.string().trim().min(1),
+  ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN: z.string().trim().min(1),
+  ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: z.string().trim().min(1),
 });
 
 export type NodeEnv = z.infer<typeof nodeEnvSchema>;
@@ -121,6 +160,28 @@ export type SharedCloudDependenciesConfig = {
     trustedUserObjectIds: string[];
   };
 };
+export type ApiDependencyConfig = {
+  foundry: {
+    defaultDeploymentName: string;
+  };
+  hands: {
+    jobTarget: string;
+  };
+  internalRuntime: {
+    authToken: string;
+  };
+  observability: {
+    requestLoggingEnabled: boolean;
+    trustProxy: boolean;
+  };
+  publicBaseUrl: string;
+  sandbox: {
+    baseUrl: string;
+  };
+  telegram: {
+    webhookSecretToken: string;
+  };
+};
 type BaseServiceConfig = {
   nodeEnv: NodeEnv;
   logLevel: LogLevel;
@@ -128,11 +189,12 @@ type BaseServiceConfig = {
   sharedCloud: SharedCloudDependenciesConfig | null;
   webPublicBaseUrl: string;
 };
-export type ApiConfig = BaseServiceConfig & {
-  serviceName: 'api';
-  host: string;
-  port: number;
-};
+export type ApiConfig = BaseServiceConfig &
+  ApiDependencyConfig & {
+    serviceName: 'api';
+    host: string;
+    port: number;
+  };
 export type SandboxConfig = BaseServiceConfig & {
   serviceName: 'sandbox';
   host: string;
@@ -231,6 +293,64 @@ function buildBaseServiceConfig(
   };
 }
 
+function resolveApiDependencyConfig(
+  source: EnvSource,
+  env: z.output<typeof apiEnvSchema>,
+): ApiDependencyConfig {
+  const defaults = {
+    foundry: {
+      defaultDeploymentName: env.ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME ?? 'gpt-5.4-mini',
+    },
+    hands: {
+      jobTarget: env.ECHIDNA_HANDS_JOB_TARGET ?? 'local-hands-job',
+    },
+    internalRuntime: {
+      authToken: env.ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN ?? 'local-internal-runtime-token',
+    },
+    observability: {
+      requestLoggingEnabled:
+        env.ECHIDNA_API_REQUEST_LOGGING_ENABLED ?? env.NODE_ENV !== 'test',
+      trustProxy: env.ECHIDNA_API_TRUST_PROXY ?? env.ECHIDNA_RUNTIME_MODE !== 'local-minimal',
+    },
+    publicBaseUrl:
+      env.ECHIDNA_API_PUBLIC_BASE_URL ??
+      `http://${env.ECHIDNA_API_HOST}:${env.ECHIDNA_API_PORT}`,
+    sandbox: {
+      baseUrl: env.ECHIDNA_SANDBOX_BASE_URL ?? 'http://127.0.0.1:3002',
+    },
+    telegram: {
+      webhookSecretToken:
+        env.ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN ?? 'local-telegram-webhook-token',
+    },
+  } satisfies ApiDependencyConfig;
+
+  if (env.ECHIDNA_RUNTIME_MODE === 'local-minimal') {
+    return defaults;
+  }
+
+  const remoteEnv = parseEnv(apiRemoteDependencyEnvSchema, source);
+
+  return {
+    foundry: {
+      defaultDeploymentName: remoteEnv.ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME,
+    },
+    hands: {
+      jobTarget: remoteEnv.ECHIDNA_HANDS_JOB_TARGET,
+    },
+    internalRuntime: {
+      authToken: remoteEnv.ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN,
+    },
+    observability: defaults.observability,
+    publicBaseUrl: remoteEnv.ECHIDNA_API_PUBLIC_BASE_URL,
+    sandbox: {
+      baseUrl: remoteEnv.ECHIDNA_SANDBOX_BASE_URL,
+    },
+    telegram: {
+      webhookSecretToken: remoteEnv.ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN,
+    },
+  };
+}
+
 export function loadApiConfig(source: EnvSource = process.env): ApiConfig {
   if (source === process.env) {
     hydrateRepositoryEnv();
@@ -239,6 +359,7 @@ export function loadApiConfig(source: EnvSource = process.env): ApiConfig {
   const env = parseEnv(apiEnvSchema, source);
   return {
     ...buildBaseServiceConfig(source, env),
+    ...resolveApiDependencyConfig(source, env),
     serviceName: 'api',
     host: env.ECHIDNA_API_HOST,
     port: env.ECHIDNA_API_PORT,
