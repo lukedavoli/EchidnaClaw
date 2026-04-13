@@ -2,11 +2,16 @@ import type { AnalyticsOverview, ApprovalId, ApprovalState } from '@echidna-claw
 import {
   createAzureRepositorySuite,
   createInMemoryRepositorySuite,
-  type AgentRepository,
   type AgentRegistryRepository,
+  type AgentRepository,
   type ChannelRepository,
   type CredentialRepository,
+  type ExecutionRepository,
   type MessageRepository,
+  type RunJournalRepository,
+  type ScheduleRepository,
+  type TaskRepository,
+  type WorkingContextRepository,
 } from '@echidna-claw/persistence';
 
 import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
@@ -23,7 +28,12 @@ export interface RepositoryBundle {
   };
   channels: ChannelRepository;
   credentials: CredentialRepository;
+  execution: ExecutionRepository;
   messages: MessageRepository;
+  runJournals: RunJournalRepository;
+  schedules: ScheduleRepository;
+  tasks: TaskRepository;
+  workingContexts: WorkingContextRepository;
 }
 
 export function createRepositoryBundle(config: ApiRuntimeConfig): {
@@ -39,7 +49,9 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
       ? createInMemoryRepositorySuite()
       : (() => {
           if (!config.sharedCloud) {
-            throw new Error('Shared-cloud repository configuration is required outside local-minimal mode.');
+            throw new Error(
+              'Shared-cloud repository configuration is required outside local-minimal mode.',
+            );
           }
 
           return createAzureRepositorySuite({
@@ -69,14 +81,19 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
         },
       },
       approvals: {
-        async getState(approvalId: ApprovalId): Promise<ApprovalState> {
-          void approvalId;
+        async getState(_approvalId: ApprovalId): Promise<ApprovalState> {
+          void _approvalId;
           throw new NotImplementedYetError('Approval persistence is reserved for Step 16.');
         },
       },
       channels: suite.channels,
       credentials: suite.credentials,
+      execution: suite.execution,
       messages: suite.messages,
+      runJournals: suite.runJournals,
+      schedules: suite.schedules,
+      tasks: suite.tasks,
+      workingContexts: suite.workingContexts,
     },
   };
 }

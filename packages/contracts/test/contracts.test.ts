@@ -4,10 +4,12 @@ import {
   adminAgentSummarySchema,
   agentSchema,
   channelActionResponseSchema,
-  credentialSecretSchema,
   credentialRefSchema,
+  credentialSecretSchema,
   errorResponseSchema,
   handsRunSchema,
+  headStartTurnRequestSchema,
+  headTurnExecutionResultSchema,
   headTurnSchema,
   idempotencyRecordSchema,
   inboundMessageSchema,
@@ -203,12 +205,23 @@ describe('contracts schemas', () => {
       updatedAt: timestamp,
       correlation,
       agentId: 'agt_step-2',
+      workingContextId: 'ctx_step-2',
       state: 'running',
+      triggerKind: 'trusted_messages',
       inboundMessageIds: [inboundMessage.id],
       readThroughMessageSequence: 1,
+      taskId: null,
+      scheduleId: null,
+      dueAt: null,
       startedAt: timestamp,
       completedAt: null,
       supersededBySequence: null,
+      providerConversationId: 'conversation-step-2',
+      providerRunId: 'run-step-2',
+      promptProfileVersion: 'head-base-v1',
+      completionKind: null,
+      failureCode: undefined,
+      failureMessage: undefined,
       responseMessageId: null,
     });
 
@@ -348,6 +361,78 @@ describe('contracts schemas', () => {
     ).toMatchObject({
       decision: 'approve',
       kind: 'approval_decision',
+    });
+  });
+
+  it('parses trigger-aware head start requests and execution results', () => {
+    const request = headStartTurnRequestSchema.parse({
+      agentId: 'agt_step-2',
+      workingContextId: 'ctx_step-2',
+      trigger: {
+        kind: 'trusted_messages',
+        channelId: 'chn_step-2',
+        inboundMessageIds: ['inm_step-2'],
+        readThroughMessageSequence: 1,
+      },
+      correlation,
+    });
+
+    expect(request.trigger.kind).toBe('trusted_messages');
+
+    expect(
+      headTurnExecutionResultSchema.parse({
+        headTurn: {
+          id: 'hdr_reply',
+          recordType: 'head_turn',
+          schemaVersion: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          correlation: {
+            ...correlation,
+            headTurnId: 'hdr_reply',
+          },
+          agentId: 'agt_step-2',
+          workingContextId: 'ctx_step-2',
+          state: 'completed',
+          triggerKind: 'trusted_messages',
+          inboundMessageIds: ['inm_step-2'],
+          readThroughMessageSequence: 1,
+          taskId: null,
+          scheduleId: null,
+          dueAt: null,
+          startedAt: timestamp,
+          completedAt: timestamp,
+          supersededBySequence: null,
+          providerConversationId: 'conversation-step-2',
+          providerRunId: 'run-step-2',
+          promptProfileVersion: 'head-base-v1',
+          completionKind: 'reply',
+          responseMessageId: null,
+        },
+        status: 'replied',
+        replyDraft: {
+          agentId: 'agt_step-2',
+          channelId: 'chn_step-2',
+          inReplyToInboundMessageId: 'inm_step-2',
+          body: {
+            text: 'The deployment looks healthy.',
+          },
+        },
+        effectSummary: {
+          taskRequested: false,
+          scheduleChangeRequested: false,
+          approvalRequested: false,
+          sandboxRequested: false,
+          memoryOperationRequested: false,
+        },
+      }),
+    ).toMatchObject({
+      status: 'replied',
+      replyDraft: {
+        body: {
+          text: 'The deployment looks healthy.',
+        },
+      },
     });
   });
 

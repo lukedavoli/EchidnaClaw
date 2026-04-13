@@ -2,12 +2,16 @@ import { z } from 'zod';
 
 import { correlationMetadataSchema } from './correlation.js';
 import {
+  type HeadStartTurnRequest,
+  type HeadSupersedeTurnRequest,
+  type HeadTurnExecutionResult,
+} from './head-runtime.js';
+import {
   agentIdSchema,
   approvalIdSchema,
   channelIdSchema,
   credentialIdSchema,
   handsRunIdSchema,
-  headTurnIdSchema,
   inboundMessageIdSchema,
   isoDateTimeSchema,
   messageSequenceSchema,
@@ -16,38 +20,18 @@ import {
   taskEnvelopeIdSchema,
   taskIdSchema,
   timeZoneSchema,
-  workingContextIdSchema,
 } from './identifiers.js';
 import {
   agentSchema,
   channelStateSchema,
   HandsRun,
   HeadTurn,
-  OutboundMessage,
   outboundMessageActionSchema,
   SandboxSession,
   Task,
   approvalStateSchema,
   usageEventSchema,
 } from './records.js';
-
-export const headStartTurnRequestSchema = z
-  .object({
-    agentId: agentIdSchema,
-    workingContextId: workingContextIdSchema,
-    inboundMessageIds: z.array(inboundMessageIdSchema).min(1),
-    readThroughMessageSequence: z.number().int().positive(),
-    correlation: correlationMetadataSchema,
-  })
-  .strict();
-
-export const headSupersedeTurnRequestSchema = z
-  .object({
-    headTurnId: headTurnIdSchema,
-    supersededBySequence: z.number().int().positive(),
-    correlation: correlationMetadataSchema,
-  })
-  .strict();
 
 export const handsStartRunRequestSchema = z
   .object({
@@ -212,12 +196,12 @@ export const channelActionResponseSchema = z.discriminatedUnion('kind', [
   approvalDecisionChannelActionResponseSchema,
 ]);
 
-export type HeadStartTurnRequest = z.infer<typeof headStartTurnRequestSchema>;
-export type HeadSupersedeTurnRequest = z.infer<typeof headSupersedeTurnRequestSchema>;
 export type HandsStartRunRequest = z.infer<typeof handsStartRunRequestSchema>;
 export type HandsReleaseForUserRequest = z.infer<typeof handsReleaseForUserRequestSchema>;
 export type SandboxCreateSessionRequest = z.infer<typeof sandboxCreateSessionRequestSchema>;
-export type SchedulerMaterializeDueSchedulesRequest = z.infer<typeof schedulerMaterializeDueSchedulesRequestSchema>;
+export type SchedulerMaterializeDueSchedulesRequest = z.infer<
+  typeof schedulerMaterializeDueSchedulesRequestSchema
+>;
 export type WebCreateAgentRequest = z.infer<typeof webCreateAgentRequestSchema>;
 export type WebSoftDeleteAgentRequest = z.infer<typeof webSoftDeleteAgentRequestSchema>;
 export type WebRestoreAgentRequest = z.infer<typeof webRestoreAgentRequestSchema>;
@@ -240,10 +224,8 @@ export type ApprovalDecisionChannelActionResponse = z.infer<
 export type ChannelActionResponse = z.infer<typeof channelActionResponseSchema>;
 
 export interface HeadService {
-  startTurn(input: HeadStartTurnRequest): Promise<HeadTurn>;
+  startTurn(input: HeadStartTurnRequest): Promise<HeadTurnExecutionResult>;
   supersedeTurn(input: HeadSupersedeTurnRequest): Promise<HeadTurn>;
-  createTask(task: Task): Promise<Task>;
-  sendMessage(message: SendChannelMessageRequest): Promise<OutboundMessage>;
 }
 
 export interface HandsService {

@@ -1,11 +1,22 @@
-import type { HeadStartTurnRequest, HeadSupersedeTurnRequest, HeadTurn } from '@echidna-claw/contracts';
-
+import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
 import { NotImplementedYetError } from '../../http/errors.js';
+import { createLiveHeadRuntimeAdapter } from './live-head-runtime-adapter.js';
+import { createLocalHeadRuntimeAdapter } from './local-head-runtime-adapter.js';
+import type {
+  CancelFoundryTurnInput,
+  FoundryHeadTurnResult,
+  HeadRuntimeAdapter,
+  PreparedHeadTool,
+  PreparedHeadTurnInput,
+} from './types.js';
 
-export interface HeadRuntimeAdapter {
-  startTurn(input: HeadStartTurnRequest): Promise<HeadTurn>;
-  supersedeTurn(input: HeadSupersedeTurnRequest): Promise<HeadTurn>;
-}
+export type {
+  CancelFoundryTurnInput,
+  FoundryHeadTurnResult,
+  HeadRuntimeAdapter,
+  PreparedHeadTool,
+  PreparedHeadTurnInput,
+};
 
 export interface MemoryStoreAdapter {
   appendTurnMemory(headTurnId: string): Promise<void>;
@@ -16,33 +27,28 @@ export interface FoundryAdapters {
   memoryStore: MemoryStoreAdapter;
 }
 
-export function createFoundryAdapters(mode: 'stubbed' | 'configured_placeholder'): {
+export function createFoundryAdapters(config: ApiRuntimeConfig): {
   adapters: FoundryAdapters;
   health: {
     description: string;
-    mode: 'stubbed' | 'configured_placeholder';
+    mode: 'stubbed' | 'configured_live';
     ready: true;
   };
 } {
+  const headRuntime =
+    config.runtimeMode === 'local-minimal'
+      ? createLocalHeadRuntimeAdapter()
+      : createLiveHeadRuntimeAdapter({
+          defaultDeploymentName: config.foundry.defaultDeploymentName,
+          projectEndpoint: config.sharedCloud!.foundry.projectEndpoint,
+        });
+
   return {
     adapters: {
-      headRuntime: {
-        async startTurn(input: HeadStartTurnRequest): Promise<HeadTurn> {
-          void input;
-          throw new NotImplementedYetError(
-            'Head prompt-agent operations are reserved for Step 10.',
-          );
-        },
-        async supersedeTurn(input: HeadSupersedeTurnRequest): Promise<HeadTurn> {
-          void input;
-          throw new NotImplementedYetError(
-            'Head turn supersession is reserved for Step 10.',
-          );
-        },
-      },
+      headRuntime,
       memoryStore: {
-        async appendTurnMemory(headTurnId: string): Promise<void> {
-          void headTurnId;
+        async appendTurnMemory(_headTurnId: string): Promise<void> {
+          void _headTurnId;
           throw new NotImplementedYetError(
             'Foundry memory-store integration is reserved for Step 17.',
           );
@@ -51,10 +57,10 @@ export function createFoundryAdapters(mode: 'stubbed' | 'configured_placeholder'
     },
     health: {
       description:
-        mode === 'stubbed'
-          ? 'Stubbed Foundry wrappers keep local-minimal startup bootable.'
-          : 'Foundry config is present; the wrappers are reserved for later implementation steps.',
-      mode,
+        config.runtimeMode === 'local-minimal'
+          ? 'Stubbed Foundry wrappers provide deterministic local Head runtime behavior.'
+          : 'Foundry adapters are configured against the shared Azure AI Foundry project.',
+      mode: config.runtimeMode === 'local-minimal' ? 'stubbed' : 'configured_live',
       ready: true,
     },
   };

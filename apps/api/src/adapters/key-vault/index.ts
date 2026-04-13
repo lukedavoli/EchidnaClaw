@@ -31,8 +31,8 @@ export function createKeyVaultAdapters(mode: 'stubbed' | 'configured_placeholder
         },
       },
       secrets: {
-        async getSecret(secretName: string): Promise<string> {
-          void secretName;
+        async getSecret(_secretName: string): Promise<string> {
+          void _secretName;
           throw new NotImplementedYetError(
             'Key Vault secret access is reserved for a later credential step.',
           );

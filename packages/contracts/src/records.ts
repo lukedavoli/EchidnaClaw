@@ -34,7 +34,7 @@ import {
   workingContextIdSchema,
 } from './identifiers.js';
 
-const artifactLinkSchema = z
+export const artifactLinkSchema = z
   .object({
     artifactId: artifactIdSchema,
     label: nonEmptyStringSchema.optional(),
@@ -48,7 +48,7 @@ const externalReferenceSchema = z
   })
   .strict();
 
-const messageBodySchema = z
+export const messageBodySchema = z
   .object({
     text: z.string().trim().default(''),
     artifacts: z.array(artifactLinkSchema).default([]),
@@ -131,6 +131,14 @@ export const agentProvisioningStateSchema = z.enum([
 ]);
 export const softDeleteStateSchema = z.enum(['active', 'soft_deleted']);
 export const headTurnStateSchema = z.enum(['queued', 'running', 'superseded', 'completed', 'failed']);
+export const headTriggerKindSchema = z.enum(['trusted_messages', 'due_task']);
+export const headTurnCompletionKindSchema = z.enum([
+  'reply',
+  'tool_only',
+  'no_op',
+  'rejected',
+  'failed',
+]);
 export const handsRunStateSchema = z.enum([
   'queued',
   'running',
@@ -389,12 +397,23 @@ export const runJournalEntrySchema = createRecordSchema('run_journal_entry', run
 
 export const headTurnSchema = createRecordSchema('head_turn', headTurnIdSchema, {
   agentId: agentIdSchema,
+  workingContextId: workingContextIdSchema,
   state: headTurnStateSchema,
-  inboundMessageIds: z.array(inboundMessageIdSchema).min(1),
-  readThroughMessageSequence: positiveIntegerSchema,
+  triggerKind: headTriggerKindSchema,
+  inboundMessageIds: z.array(inboundMessageIdSchema).default([]),
+  readThroughMessageSequence: positiveIntegerSchema.nullable(),
+  taskId: taskIdSchema.nullable(),
+  scheduleId: scheduleIdSchema.nullable(),
+  dueAt: isoDateTimeSchema.nullable(),
   startedAt: isoDateTimeSchema.nullable(),
   completedAt: isoDateTimeSchema.nullable(),
   supersededBySequence: messageSequenceSchema.nullable(),
+  providerConversationId: nonEmptyStringSchema.nullable(),
+  providerRunId: nonEmptyStringSchema.nullable(),
+  promptProfileVersion: nonEmptyStringSchema,
+  completionKind: headTurnCompletionKindSchema.nullable(),
+  failureCode: nonEmptyStringSchema.optional(),
+  failureMessage: z.string().trim().optional(),
   responseMessageId: outboundMessageIdSchema.nullable(),
 });
 
@@ -439,6 +458,8 @@ export type ApprovalState = z.infer<typeof approvalStateSchema>;
 export type AgentProvisioningState = z.infer<typeof agentProvisioningStateSchema>;
 export type SoftDeleteState = z.infer<typeof softDeleteStateSchema>;
 export type HeadTurnState = z.infer<typeof headTurnStateSchema>;
+export type HeadTriggerKind = z.infer<typeof headTriggerKindSchema>;
+export type HeadTurnCompletionKind = z.infer<typeof headTurnCompletionKindSchema>;
 export type HandsRunState = z.infer<typeof handsRunStateSchema>;
 export type SandboxSessionState = z.infer<typeof sandboxSessionStateSchema>;
 export type ScheduleState = z.infer<typeof scheduleStateSchema>;

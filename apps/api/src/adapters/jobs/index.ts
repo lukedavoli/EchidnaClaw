@@ -63,26 +63,26 @@ export function createRuntimeAdapters(mode: 'stubbed' | 'configured_placeholder'
     },
     runtime: {
       handsJobs: {
-        async releaseForUser(input: HandsReleaseForUserRequest): Promise<HandsRun> {
-          void input;
+        async releaseForUser(_input: HandsReleaseForUserRequest): Promise<HandsRun> {
+          void _input;
           throw new NotImplementedYetError('Hands release-for-user is reserved for Step 13.');
         },
-        async startRun(input: HandsStartRunRequest): Promise<HandsRun> {
-          void input;
+        async startRun(_input: HandsStartRunRequest): Promise<HandsRun> {
+          void _input;
           throw new NotImplementedYetError('Hands job starts are reserved for Step 13.');
         },
       },
       sandboxRuntime: {
-        async createSession(input: SandboxCreateSessionRequest): Promise<SandboxSession> {
-          void input;
+        async createSession(_input: SandboxCreateSessionRequest): Promise<SandboxSession> {
+          void _input;
           throw new NotImplementedYetError('Sandbox session creation is reserved for Step 14.');
         },
       },
       schedulerRuntime: {
         async materializeDueSchedules(
-          input: SchedulerMaterializeDueSchedulesRequest,
+          _input: SchedulerMaterializeDueSchedulesRequest,
         ): Promise<Task[]> {
-          void input;
+          void _input;
           throw new NotImplementedYetError(
             'Schedule materialization is reserved for Step 15.',
           );

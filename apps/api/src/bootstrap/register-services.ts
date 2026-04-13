@@ -54,9 +54,11 @@ export function registerServices(options: {
       }),
       outboundMessagingService,
       headRuntimeService: createHeadRuntimeService({
+        config: options.config,
         headRuntime: adapters.adapters.foundry.headRuntime,
         logger: options.loggerFactory.createLogger({ service: 'head_runtime' }),
-        outboundMessagingService,
+        repositories: adapters.adapters.repositories,
+        repositoryConfig,
       }),
       sandboxRuntimeService: createSandboxRuntimeService({
         logger: options.loggerFactory.createLogger({ service: 'sandbox_runtime' }),
