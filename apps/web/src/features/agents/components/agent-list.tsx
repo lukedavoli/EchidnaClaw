@@ -7,10 +7,11 @@ type AgentListProps = {
   agents: AgentViewModel[];
   busyAgentId: string | null;
   onArchive: (agent: AgentViewModel) => void;
+  onRetry: (agent: AgentViewModel) => void;
   onRestore: (agent: AgentViewModel) => void;
 };
 
-export function AgentList({ agents, busyAgentId, onArchive, onRestore }: AgentListProps) {
+export function AgentList({ agents, busyAgentId, onArchive, onRetry, onRestore }: AgentListProps) {
   return (
     <Stack gap="md">
       {agents.map((agent) => (
@@ -19,6 +20,7 @@ export function AgentList({ agents, busyAgentId, onArchive, onRestore }: AgentLi
           busy={busyAgentId === agent.id}
           key={agent.id}
           onArchive={onArchive}
+          onRetry={onRetry}
           onRestore={onRestore}
         />
       ))}

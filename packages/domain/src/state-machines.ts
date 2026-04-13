@@ -3,6 +3,8 @@ import {
   type AgentProvisioningState,
   type Approval,
   type ApprovalState,
+  type Channel,
+  type ChannelState,
   type SoftDeleteState,
   type Task,
   type TaskState,
@@ -30,15 +32,23 @@ const allowedProvisioningTransitions: Record<
   AgentProvisioningState,
   readonly AgentProvisioningState[]
 > = {
-  pending_provisioning: ['provisioning'],
+  pending_provisioning: ['provisioning', 'provisioning_failed'],
   provisioning: ['active', 'provisioning_failed'],
-  provisioning_failed: ['provisioning'],
-  active: [],
+  provisioning_failed: ['pending_provisioning', 'provisioning'],
+  active: ['provisioning_failed'],
 };
 
 const allowedSoftDeleteTransitions: Record<SoftDeleteState, readonly SoftDeleteState[]> = {
   active: ['soft_deleted'],
   soft_deleted: ['active'],
+};
+
+const allowedChannelTransitions: Record<ChannelState, readonly ChannelState[]> = {
+  pending_provisioning: ['provisioning', 'provisioning_failed'],
+  provisioning: ['active', 'provisioning_failed'],
+  provisioning_failed: ['pending_provisioning', 'provisioning'],
+  active: ['provisioning_failed', 'retired'],
+  retired: [],
 };
 
 function assertTransition<TState extends string>(
@@ -125,6 +135,24 @@ export function transitionAgentProvisioningState(
   };
 }
 
+export function canTransitionChannelState(current: ChannelState, next: ChannelState): boolean {
+  return (allowedChannelTransitions[current] ?? []).includes(next);
+}
+
+export function transitionChannelState(
+  channel: Channel,
+  nextState: ChannelState,
+  transitionedAt: string,
+): Channel {
+  assertTransition(channel.state, nextState, allowedChannelTransitions, 'channel');
+
+  return {
+    ...channel,
+    state: nextState,
+    updatedAt: transitionedAt,
+  };
+}
+
 export function canTransitionSoftDeleteState(
   current: SoftDeleteState,
   next: SoftDeleteState,
@@ -143,6 +171,7 @@ export function softDeleteAgent(agent: Agent, deletedAt: string): Agent {
   return {
     ...agent,
     lifecycleState: 'soft_deleted',
+    restoredAt: null,
     softDeletedAt: deletedAt,
     updatedAt: deletedAt,
   };
@@ -155,6 +184,7 @@ export function restoreAgent(agent: Agent, restoredAt: string): Agent {
     ...agent,
     lifecycleState: 'active',
     restoredAt,
+    softDeletedAt: null,
     updatedAt: restoredAt,
   };
 }

@@ -1,10 +1,16 @@
 import {
+  adminAgentDetailSchema,
+  adminAgentSummarySchema,
   agentSchema,
   analyticsOverviewSchema,
+  channelSchema,
   correlationMetadataSchema,
   usageEventSchema,
+  type AdminAgentDetail,
+  type AdminAgentSummary,
   type Agent,
   type AnalyticsOverview,
+  type Channel,
   type UsageEvent,
 } from '@echidna-claw/contracts';
 
@@ -31,6 +37,7 @@ export function createAgentFixture(overrides: Partial<Agent> = {}): Agent {
     id: 'agt_fixture-agent',
     lifecycleState: 'active',
     name: 'Ops Triage Agent',
+    primaryChannelId: 'chn_fixture-agent',
     provisioningState: 'active',
     recordType: 'agent',
     responsibilitiesSummary: 'Handles operator follow-up and monitoring.',
@@ -41,6 +48,97 @@ export function createAgentFixture(overrides: Partial<Agent> = {}): Agent {
     updatedAt: baseTimestamp,
     ...overrides,
   });
+}
+
+export function createChannelFixture(overrides: Partial<Channel> = {}): Channel {
+  return channelSchema.parse({
+    agentId: 'agt_fixture-agent',
+    botDisplayName: 'Ops Triage Bot',
+    botUserId: 'telegram-bot-user',
+    boundAt: baseTimestamp,
+    correlation: createFixtureCorrelation('channel'),
+    createdAt: baseTimestamp,
+    credentialId: undefined,
+    externalChatId: 'chat-123',
+    externalHandle: 'ops-triage-bot',
+    id: 'chn_fixture-agent',
+    lastExternalMessageId: undefined,
+    lastInboundSequence: 0,
+    lastProvisioningErrorCode: undefined,
+    lastProvisioningErrorMessage: undefined,
+    lastProvisioningFailedAt: null,
+    lastRecoveryRequestedAt: null,
+    provisioningRequestedAt: baseTimestamp,
+    provisioningStartedAt: baseTimestamp,
+    provider: 'telegram',
+    recordType: 'channel',
+    recoveryAttemptCount: 0,
+    schemaVersion: 1,
+    state: 'active',
+    updatedAt: baseTimestamp,
+    ...overrides,
+  });
+}
+
+export function createAdminAgentSummaryFixture(input: {
+  agent?: Partial<Agent>;
+  primaryChannel?: Partial<Channel> | null;
+} = {}): AdminAgentSummary {
+  const agent = createAgentFixture(input.agent);
+  const primaryChannelOverrides =
+    input.primaryChannel === null || input.primaryChannel === undefined
+      ? input.primaryChannel
+      : (() => {
+          const { conversationUrl: _conversationUrl, ...channelOverrides } = input.primaryChannel as Partial<
+            Channel & {
+              conversationUrl?: string;
+            }
+          >;
+
+          return channelOverrides;
+        })();
+  const primaryChannel =
+    primaryChannelOverrides === null
+      ? null
+      : createChannelFixture({
+          agentId: agent.id,
+          id: agent.primaryChannelId,
+          ...primaryChannelOverrides,
+        });
+
+  return adminAgentSummarySchema.parse({
+    agent,
+    primaryChannel: primaryChannel
+      ? {
+          id: primaryChannel.id,
+          provider: primaryChannel.provider,
+          state: primaryChannel.state,
+          externalHandle: primaryChannel.externalHandle,
+          externalChatId: primaryChannel.externalChatId,
+          botUserId: primaryChannel.botUserId,
+          botDisplayName: primaryChannel.botDisplayName,
+          credentialId: primaryChannel.credentialId,
+          provisioningRequestedAt: primaryChannel.provisioningRequestedAt,
+          provisioningStartedAt: primaryChannel.provisioningStartedAt,
+          boundAt: primaryChannel.boundAt,
+          lastProvisioningFailedAt: primaryChannel.lastProvisioningFailedAt,
+          lastProvisioningErrorCode: primaryChannel.lastProvisioningErrorCode,
+          lastProvisioningErrorMessage: primaryChannel.lastProvisioningErrorMessage,
+          recoveryAttemptCount: primaryChannel.recoveryAttemptCount,
+          lastRecoveryRequestedAt: primaryChannel.lastRecoveryRequestedAt,
+          conversationUrl: primaryChannel.externalHandle
+            ? `https://t.me/${primaryChannel.externalHandle.replace(/^@+/, '')}`
+            : undefined,
+        }
+      : null,
+  });
+}
+
+export function createAdminAgentDetailFixture(input?: {
+  agent?: Partial<Agent>;
+  primaryChannel?: Partial<Channel> | null;
+}): AdminAgentDetail {
+  return adminAgentDetailSchema.parse(createAdminAgentSummaryFixture(input));
 }
 
 export function createUsageEventFixture(overrides: Partial<UsageEvent> = {}): UsageEvent {

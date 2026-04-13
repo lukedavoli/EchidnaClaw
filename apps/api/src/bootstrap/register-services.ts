@@ -1,3 +1,4 @@
+import { loadRepositoryConfig } from '@echidna-claw/config';
 import type { LoggerFactory } from '@echidna-claw/observability';
 
 import { createExternalAdapters } from '../adapters/index.js';
@@ -18,6 +19,7 @@ export function registerServices(options: {
 }): ApiDependencies {
   const adapters = createExternalAdapters(options.config);
   const appLogger = options.loggerFactory.createLogger({ component: 'api_app' });
+  const repositoryConfig = loadRepositoryConfig();
 
   return {
     adapters: adapters.adapters,
@@ -29,6 +31,7 @@ export function registerServices(options: {
       ready: Object.values(adapters.health).every((dependency) => dependency.ready),
       runtimeMode: options.config.runtimeMode,
     },
+    repositoryConfig,
     services: {
       approvalCallbackService: createApprovalCallbackService({
         logger: options.loggerFactory.createLogger({ service: 'approval_callback' }),
@@ -61,6 +64,7 @@ export function registerServices(options: {
       webControlPlaneService: createWebControlPlaneService({
         logger: options.loggerFactory.createLogger({ service: 'web_control_plane' }),
         repositories: adapters.adapters.repositories,
+        repositoryConfig,
       }),
     },
   };

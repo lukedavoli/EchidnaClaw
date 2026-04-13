@@ -3,6 +3,7 @@ import 'fastify';
 import type {
   HeadService,
   HandsService,
+  RepositoryConfig,
   SandboxService,
   SchedulerService,
   WebControlPlaneService,
@@ -40,6 +41,7 @@ export type ApiDependencies = {
   config: ApiRuntimeConfig;
   loggerFactory: LoggerFactory;
   readiness: ReadinessReport;
+  repositoryConfig: RepositoryConfig;
   services: ApiServices;
 };
 

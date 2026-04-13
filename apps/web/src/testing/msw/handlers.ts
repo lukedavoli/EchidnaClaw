@@ -3,14 +3,15 @@ import {
   errorResponseSchema,
   readinessResponseSchema,
   webCreateAgentRequestSchema,
-  type Agent,
+  type AdminAgentSummary,
   type AnalyticsOverview,
 } from '@echidna-claw/contracts';
 import { http, HttpResponse } from 'msw';
 import { z } from 'zod';
 
 import {
-  createAgentFixture,
+  createAdminAgentDetailFixture,
+  createAdminAgentSummaryFixture,
   createAnalyticsOverviewFixture,
 } from '../fixtures/records.js';
 
@@ -27,7 +28,7 @@ type AnalyticsMode = 'ready' | 'not-implemented' | 'unavailable';
 
 type MockState = {
   agentMode: AgentMode;
-  agents: Agent[];
+  agents: AdminAgentSummary[];
   analyticsMode: AnalyticsMode;
   analyticsOverview: AnalyticsOverview;
   nextAgentId: number;
@@ -38,14 +39,22 @@ function createDefaultState(): MockState {
   return {
     agentMode: 'ready',
     agents: [
-      createAgentFixture(),
-      createAgentFixture({
-        id: 'agt_fixture-archive',
-        lifecycleState: 'soft_deleted',
-        name: 'Archived Escalation Agent',
-        restoredAt: null,
-        softDeletedAt: '2026-04-12T10:00:00.000Z',
-        updatedAt: '2026-04-12T10:00:00.000Z',
+      createAdminAgentSummaryFixture(),
+      createAdminAgentSummaryFixture({
+        agent: {
+          id: 'agt_fixture-archive',
+          lifecycleState: 'soft_deleted',
+          name: 'Archived Escalation Agent',
+          primaryChannelId: 'chn_fixture-archive',
+          restoredAt: null,
+          softDeletedAt: '2026-04-12T10:00:00.000Z',
+          updatedAt: '2026-04-12T10:00:00.000Z',
+        },
+        primaryChannel: {
+          agentId: 'agt_fixture-archive',
+          id: 'chn_fixture-archive',
+          updatedAt: '2026-04-12T10:00:00.000Z',
+        },
       }),
     ],
     analyticsMode: 'ready',
@@ -86,8 +95,57 @@ function updateAnalyticsTotals() {
   state.analyticsOverview = createAnalyticsOverviewFixture(state.analyticsOverview.events);
 }
 
+function upsertAgentSummary(updated: AdminAgentSummary) {
+  state.agents = state.agents.map((entry) => (entry.agent.id === updated.agent.id ? updated : entry));
+}
+
+function getAgentSummary(agentId: string): AdminAgentSummary | undefined {
+  return state.agents.find((entry) => entry.agent.id === agentId);
+}
+
+function createPendingAgentSummary(input: {
+  correlation: unknown;
+  createdAt: string;
+  id: string;
+  name: string;
+  timeZone?: string | undefined;
+}) {
+  return createAdminAgentDetailFixture({
+    agent: {
+      correlation: input.correlation as never,
+      createdAt: input.createdAt,
+      id: input.id,
+      name: input.name,
+      primaryChannelId: `chn_${input.id.replace(/^agt_/, '')}`,
+      provisioningState: 'pending_provisioning',
+      timeZone: input.timeZone ?? 'Australia/Sydney',
+      updatedAt: input.createdAt,
+    },
+    primaryChannel: {
+      agentId: input.id,
+      botDisplayName: undefined,
+      botUserId: undefined,
+      boundAt: null,
+      correlation: input.correlation as never,
+      createdAt: input.createdAt,
+      externalChatId: undefined,
+      externalHandle: undefined,
+      id: `chn_${input.id.replace(/^agt_/, '')}`,
+      lastProvisioningErrorCode: undefined,
+      lastProvisioningErrorMessage: undefined,
+      lastProvisioningFailedAt: null,
+      lastRecoveryRequestedAt: null,
+      provisioningRequestedAt: input.createdAt,
+      provisioningStartedAt: null,
+      recoveryAttemptCount: 0,
+      state: 'pending_provisioning',
+      updatedAt: input.createdAt,
+    },
+  });
+}
+
 export const mockWebApiState = {
-  addAgent(agent: Agent) {
+  addAgent(agent: AdminAgentSummary) {
     state.agents = [agent, ...state.agents];
   },
   reset() {
@@ -96,7 +154,7 @@ export const mockWebApiState = {
   setAgentMode(mode: AgentMode) {
     state.agentMode = mode;
   },
-  setAgents(agents: Agent[]) {
+  setAgents(agents: AdminAgentSummary[]) {
     state.agents = agents;
   },
   setAnalyticsMode(mode: AnalyticsMode) {
@@ -131,8 +189,8 @@ export async function resolveMockApiRequest(request: Request) {
     const body = readinessResponseSchema.parse({
       dependencies: {
         repositories: {
-          description: 'Repository adapters are stubbed until persistence lands.',
-          mode: 'stubbed',
+          description: 'Repository adapters use the in-memory suite for local-minimal development.',
+          mode: 'in_memory',
           ready: state.readinessReady,
         },
       },
@@ -168,6 +226,18 @@ export async function resolveMockApiRequest(request: Request) {
     return jsonResponse(state.agents);
   }
 
+  const getAgentMatch = url.pathname.match(/^\/api\/admin\/agents\/([^/]+)$/);
+
+  if (request.method === 'GET' && getAgentMatch) {
+    const agent = getAgentSummary(String(getAgentMatch[1]));
+
+    if (!agent) {
+      return createStructuredError(404, 'not_found', 'Agent not found.', false);
+    }
+
+    return jsonResponse(agent);
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/admin/agents') {
     if (state.agentMode === 'not-implemented') {
       return createStructuredError(
@@ -189,14 +259,12 @@ export async function resolveMockApiRequest(request: Request) {
 
     const body = webCreateAgentRequestSchema.parse(await request.json());
     const createdAt = `2026-04-13T0${state.nextAgentId}:00:00.000Z`;
-    const agent = createAgentFixture({
+    const agent = createPendingAgentSummary({
       correlation: body.correlation,
       createdAt,
       id: `agt_created-${state.nextAgentId}`,
       name: body.name,
-      provisioningState: 'pending_provisioning',
       timeZone: body.timeZone,
-      updatedAt: createdAt,
     });
 
     state.nextAgentId += 1;
@@ -210,21 +278,30 @@ export async function resolveMockApiRequest(request: Request) {
   if (request.method === 'POST' && softDeleteMatch) {
     mutationBodySchema.parse(await request.json());
 
-    const agent = state.agents.find((entry) => entry.id === softDeleteMatch[1]);
+    const agent = getAgentSummary(String(softDeleteMatch[1]));
 
     if (!agent) {
       return createStructuredError(404, 'not_found', 'Agent not found.', false);
     }
 
-    const updated = createAgentFixture({
-      ...agent,
-      lifecycleState: 'soft_deleted',
-      restoredAt: null,
-      softDeletedAt: '2026-04-13T11:00:00.000Z',
-      updatedAt: '2026-04-13T11:00:00.000Z',
+    const updated = createAdminAgentDetailFixture({
+      agent: {
+        ...agent.agent,
+        lifecycleState: 'soft_deleted',
+        restoredAt: null,
+        softDeletedAt: '2026-04-13T11:00:00.000Z',
+        updatedAt: '2026-04-13T11:00:00.000Z',
+      },
+      primaryChannel: agent.primaryChannel
+        ? {
+            ...agent.primaryChannel,
+            agentId: agent.agent.id,
+            updatedAt: '2026-04-13T11:00:00.000Z',
+          }
+        : null,
     });
 
-    state.agents = state.agents.map((entry) => (entry.id === agent.id ? updated : entry));
+    upsertAgentSummary(updated);
 
     return jsonResponse(updated);
   }
@@ -234,21 +311,74 @@ export async function resolveMockApiRequest(request: Request) {
   if (request.method === 'POST' && restoreMatch) {
     mutationBodySchema.parse(await request.json());
 
-    const agent = state.agents.find((entry) => entry.id === restoreMatch[1]);
+    const agent = getAgentSummary(String(restoreMatch[1]));
 
     if (!agent) {
       return createStructuredError(404, 'not_found', 'Agent not found.', false);
     }
 
-    const updated = createAgentFixture({
-      ...agent,
-      lifecycleState: 'active',
-      restoredAt: '2026-04-13T11:30:00.000Z',
-      softDeletedAt: null,
-      updatedAt: '2026-04-13T11:30:00.000Z',
+    const updated = createAdminAgentDetailFixture({
+      agent: {
+        ...agent.agent,
+        lifecycleState: 'active',
+        restoredAt: '2026-04-13T11:30:00.000Z',
+        softDeletedAt: null,
+        updatedAt: '2026-04-13T11:30:00.000Z',
+      },
+      primaryChannel: agent.primaryChannel
+        ? {
+            ...agent.primaryChannel,
+            agentId: agent.agent.id,
+            updatedAt: '2026-04-13T11:30:00.000Z',
+          }
+        : null,
     });
 
-    state.agents = state.agents.map((entry) => (entry.id === agent.id ? updated : entry));
+    upsertAgentSummary(updated);
+
+    return jsonResponse(updated);
+  }
+
+  const retryMatch = url.pathname.match(/^\/api\/admin\/agents\/([^/]+)\/provisioning\/retry$/);
+
+  if (request.method === 'POST' && retryMatch) {
+    mutationBodySchema.parse(await request.json());
+
+    const agent = getAgentSummary(String(retryMatch[1]));
+
+    if (!agent) {
+      return createStructuredError(404, 'not_found', 'Agent not found.', false);
+    }
+
+    if (agent.agent.lifecycleState === 'soft_deleted' || agent.primaryChannel?.state !== 'provisioning_failed') {
+      return createStructuredError(
+        409,
+        'state_conflict',
+        'Retry provisioning requires an active agent whose primary channel is provisioning_failed.',
+        false,
+      );
+    }
+
+    const updated = createAdminAgentDetailFixture({
+      agent: {
+        ...agent.agent,
+        provisioningState: 'pending_provisioning',
+        updatedAt: '2026-04-13T12:00:00.000Z',
+      },
+      primaryChannel: agent.primaryChannel
+        ? {
+            ...agent.primaryChannel,
+            agentId: agent.agent.id,
+            lastRecoveryRequestedAt: '2026-04-13T12:00:00.000Z',
+            provisioningStartedAt: null,
+            recoveryAttemptCount: agent.primaryChannel.recoveryAttemptCount + 1,
+            state: 'pending_provisioning',
+            updatedAt: '2026-04-13T12:00:00.000Z',
+          }
+        : null,
+    });
+
+    upsertAgentSummary(updated);
 
     return jsonResponse(updated);
   }
@@ -293,8 +423,8 @@ export const handlers = [
     const body = readinessResponseSchema.parse({
       dependencies: {
         repositories: {
-          description: 'Repository adapters are stubbed until persistence lands.',
-          mode: 'stubbed',
+          description: 'Repository adapters use the in-memory suite for local-minimal development.',
+          mode: 'in_memory',
           ready: state.readinessReady,
         },
       },
@@ -330,6 +460,16 @@ export const handlers = [
     return HttpResponse.json(state.agents);
   }),
 
+  http.get(`${mockApiBaseUrl}/api/admin/agents/:agentId`, ({ params }) => {
+    const agent = getAgentSummary(String(params.agentId));
+
+    if (!agent) {
+      return createStructuredError(404, 'not_found', 'Agent not found.', false);
+    }
+
+    return HttpResponse.json(agent);
+  }),
+
   http.post(`${mockApiBaseUrl}/api/admin/agents`, async ({ request }) => {
     if (state.agentMode === 'not-implemented') {
       return createStructuredError(
@@ -351,14 +491,12 @@ export const handlers = [
 
     const body = webCreateAgentRequestSchema.parse(await request.json());
     const createdAt = `2026-04-13T0${state.nextAgentId}:00:00.000Z`;
-    const agent = createAgentFixture({
+    const agent = createPendingAgentSummary({
       correlation: body.correlation,
       createdAt,
       id: `agt_created-${state.nextAgentId}`,
       name: body.name,
-      provisioningState: 'pending_provisioning',
       timeZone: body.timeZone,
-      updatedAt: createdAt,
     });
 
     state.nextAgentId += 1;
@@ -370,21 +508,30 @@ export const handlers = [
   http.post(`${mockApiBaseUrl}/api/admin/agents/:agentId/soft-delete`, async ({ params, request }) => {
     mutationBodySchema.parse(await request.json());
 
-    const agent = state.agents.find((entry) => entry.id === params.agentId);
+    const agent = getAgentSummary(String(params.agentId));
 
     if (!agent) {
       return createStructuredError(404, 'not_found', 'Agent not found.', false);
     }
 
-    const updated = createAgentFixture({
-      ...agent,
-      lifecycleState: 'soft_deleted',
-      restoredAt: null,
-      softDeletedAt: '2026-04-13T11:00:00.000Z',
-      updatedAt: '2026-04-13T11:00:00.000Z',
+    const updated = createAdminAgentDetailFixture({
+      agent: {
+        ...agent.agent,
+        lifecycleState: 'soft_deleted',
+        restoredAt: null,
+        softDeletedAt: '2026-04-13T11:00:00.000Z',
+        updatedAt: '2026-04-13T11:00:00.000Z',
+      },
+      primaryChannel: agent.primaryChannel
+        ? {
+            ...agent.primaryChannel,
+            agentId: agent.agent.id,
+            updatedAt: '2026-04-13T11:00:00.000Z',
+          }
+        : null,
     });
 
-    state.agents = state.agents.map((entry) => (entry.id === agent.id ? updated : entry));
+    upsertAgentSummary(updated);
 
     return HttpResponse.json(updated);
   }),
@@ -392,21 +539,72 @@ export const handlers = [
   http.post(`${mockApiBaseUrl}/api/admin/agents/:agentId/restore`, async ({ params, request }) => {
     mutationBodySchema.parse(await request.json());
 
-    const agent = state.agents.find((entry) => entry.id === params.agentId);
+    const agent = getAgentSummary(String(params.agentId));
 
     if (!agent) {
       return createStructuredError(404, 'not_found', 'Agent not found.', false);
     }
 
-    const updated = createAgentFixture({
-      ...agent,
-      lifecycleState: 'active',
-      restoredAt: '2026-04-13T11:30:00.000Z',
-      softDeletedAt: null,
-      updatedAt: '2026-04-13T11:30:00.000Z',
+    const updated = createAdminAgentDetailFixture({
+      agent: {
+        ...agent.agent,
+        lifecycleState: 'active',
+        restoredAt: '2026-04-13T11:30:00.000Z',
+        softDeletedAt: null,
+        updatedAt: '2026-04-13T11:30:00.000Z',
+      },
+      primaryChannel: agent.primaryChannel
+        ? {
+            ...agent.primaryChannel,
+            agentId: agent.agent.id,
+            updatedAt: '2026-04-13T11:30:00.000Z',
+          }
+        : null,
     });
 
-    state.agents = state.agents.map((entry) => (entry.id === agent.id ? updated : entry));
+    upsertAgentSummary(updated);
+
+    return HttpResponse.json(updated);
+  }),
+
+  http.post(`${mockApiBaseUrl}/api/admin/agents/:agentId/provisioning/retry`, async ({ params, request }) => {
+    mutationBodySchema.parse(await request.json());
+
+    const agent = getAgentSummary(String(params.agentId));
+
+    if (!agent) {
+      return createStructuredError(404, 'not_found', 'Agent not found.', false);
+    }
+
+    if (agent.agent.lifecycleState === 'soft_deleted' || agent.primaryChannel?.state !== 'provisioning_failed') {
+      return createStructuredError(
+        409,
+        'state_conflict',
+        'Retry provisioning requires an active agent whose primary channel is provisioning_failed.',
+        false,
+      );
+    }
+
+    const updated = createAdminAgentDetailFixture({
+      agent: {
+        ...agent.agent,
+        provisioningState: 'pending_provisioning',
+        updatedAt: '2026-04-13T12:00:00.000Z',
+      },
+      primaryChannel: agent.primaryChannel
+        ? {
+            ...agent.primaryChannel,
+            agentId: agent.agent.id,
+            lastRecoveryRequestedAt: '2026-04-13T12:00:00.000Z',
+            provisioningStartedAt: null,
+            recoveryAttemptCount: agent.primaryChannel.recoveryAttemptCount + 1,
+            state: 'pending_provisioning',
+            updatedAt: '2026-04-13T12:00:00.000Z',
+          }
+        : null,
+    });
+
+    upsertAgentSummary(updated);
 
     return HttpResponse.json(updated);
   }),

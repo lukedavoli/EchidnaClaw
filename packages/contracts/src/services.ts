@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { correlationMetadataSchema } from './correlation.js';
 import {
+  channelIdSchema,
+  credentialIdSchema,
   agentIdSchema,
   approvalIdSchema,
   handsRunIdSchema,
@@ -12,10 +14,12 @@ import {
   sandboxSessionIdSchema,
   taskEnvelopeIdSchema,
   taskIdSchema,
+  timeZoneSchema,
   workingContextIdSchema,
 } from './identifiers.js';
 import {
-  Agent,
+  agentSchema,
+  channelStateSchema,
   HandsRun,
   HeadTurn,
   OutboundMessage,
@@ -81,7 +85,7 @@ export const schedulerMaterializeDueSchedulesRequestSchema = z
 export const webCreateAgentRequestSchema = z
   .object({
     name: nonEmptyStringSchema,
-    timeZone: nonEmptyStringSchema,
+    timeZone: timeZoneSchema.optional(),
     correlation: correlationMetadataSchema,
   })
   .strict();
@@ -97,6 +101,67 @@ export const webRestoreAgentRequestSchema = z
   .object({
     agentId: agentIdSchema,
     correlation: correlationMetadataSchema,
+  })
+  .strict();
+
+export const webRetryAgentProvisioningRequestSchema = z
+  .object({
+    agentId: agentIdSchema,
+    correlation: correlationMetadataSchema,
+  })
+  .strict();
+
+export const adminPrimaryChannelSummarySchema = z
+  .object({
+    id: channelIdSchema,
+    provider: z.literal('telegram'),
+    state: channelStateSchema,
+    externalHandle: nonEmptyStringSchema.optional(),
+    externalChatId: nonEmptyStringSchema.optional(),
+    botUserId: nonEmptyStringSchema.optional(),
+    botDisplayName: nonEmptyStringSchema.optional(),
+    credentialId: credentialIdSchema.optional(),
+    provisioningRequestedAt: isoDateTimeSchema,
+    provisioningStartedAt: isoDateTimeSchema.nullable(),
+    boundAt: isoDateTimeSchema.nullable(),
+    lastProvisioningFailedAt: isoDateTimeSchema.nullable(),
+    lastProvisioningErrorCode: nonEmptyStringSchema.optional(),
+    lastProvisioningErrorMessage: nonEmptyStringSchema.optional(),
+    recoveryAttemptCount: z.number().int().nonnegative(),
+    lastRecoveryRequestedAt: isoDateTimeSchema.nullable(),
+    conversationUrl: nonEmptyStringSchema.optional(),
+  })
+  .strict();
+
+export const adminAgentSummarySchema = z
+  .object({
+    agent: agentSchema,
+    primaryChannel: adminPrimaryChannelSummarySchema.nullable(),
+  })
+  .strict();
+
+export const adminAgentDetailSchema = adminAgentSummarySchema;
+
+export const completeAgentProvisioningRequestSchema = z
+  .object({
+    agentId: agentIdSchema,
+    botUserId: nonEmptyStringSchema,
+    botDisplayName: nonEmptyStringSchema.optional(),
+    boundAt: isoDateTimeSchema.optional(),
+    correlation: correlationMetadataSchema,
+    credentialId: credentialIdSchema.optional(),
+    externalChatId: nonEmptyStringSchema.optional(),
+    externalHandle: nonEmptyStringSchema.optional(),
+  })
+  .strict();
+
+export const recordAgentProvisioningFailureRequestSchema = z
+  .object({
+    agentId: agentIdSchema,
+    correlation: correlationMetadataSchema,
+    errorCode: nonEmptyStringSchema.optional(),
+    errorMessage: nonEmptyStringSchema.optional(),
+    failedAt: isoDateTimeSchema.optional(),
   })
   .strict();
 
@@ -118,6 +183,14 @@ export type SchedulerMaterializeDueSchedulesRequest = z.infer<typeof schedulerMa
 export type WebCreateAgentRequest = z.infer<typeof webCreateAgentRequestSchema>;
 export type WebSoftDeleteAgentRequest = z.infer<typeof webSoftDeleteAgentRequestSchema>;
 export type WebRestoreAgentRequest = z.infer<typeof webRestoreAgentRequestSchema>;
+export type WebRetryAgentProvisioningRequest = z.infer<typeof webRetryAgentProvisioningRequestSchema>;
+export type AdminPrimaryChannelSummary = z.infer<typeof adminPrimaryChannelSummarySchema>;
+export type AdminAgentSummary = z.infer<typeof adminAgentSummarySchema>;
+export type AdminAgentDetail = z.infer<typeof adminAgentDetailSchema>;
+export type CompleteAgentProvisioningRequest = z.infer<typeof completeAgentProvisioningRequestSchema>;
+export type RecordAgentProvisioningFailureRequest = z.infer<
+  typeof recordAgentProvisioningFailureRequestSchema
+>;
 export type AnalyticsOverview = z.infer<typeof analyticsOverviewSchema>;
 
 export interface HeadService {
@@ -143,10 +216,14 @@ export interface SchedulerService {
 }
 
 export interface WebControlPlaneService {
-  createAgent(input: WebCreateAgentRequest): Promise<Agent>;
-  listAgents(): Promise<Agent[]>;
-  softDeleteAgent(input: WebSoftDeleteAgentRequest): Promise<Agent>;
-  restoreAgent(input: WebRestoreAgentRequest): Promise<Agent>;
+  createAgent(input: WebCreateAgentRequest): Promise<AdminAgentDetail>;
+  getAgent(agentId: z.infer<typeof agentIdSchema>): Promise<AdminAgentDetail>;
+  listAgents(): Promise<AdminAgentSummary[]>;
+  retryAgentProvisioning(input: WebRetryAgentProvisioningRequest): Promise<AdminAgentDetail>;
+  softDeleteAgent(input: WebSoftDeleteAgentRequest): Promise<AdminAgentDetail>;
+  restoreAgent(input: WebRestoreAgentRequest): Promise<AdminAgentDetail>;
+  completeAgentProvisioning(input: CompleteAgentProvisioningRequest): Promise<AdminAgentDetail>;
+  recordAgentProvisioningFailure(input: RecordAgentProvisioningFailureRequest): Promise<AdminAgentDetail>;
   getApprovalState(approvalId: z.infer<typeof approvalIdSchema>): Promise<z.infer<typeof approvalStateSchema>>;
   getAnalyticsOverview(): Promise<AnalyticsOverview>;
 }

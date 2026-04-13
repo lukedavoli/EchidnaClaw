@@ -2,7 +2,7 @@ import type { Agent } from '@echidna-claw/contracts';
 
 import { webApiClient } from '../../lib/api/client.js';
 
-type CreateAgentInput = Pick<Agent, 'name' | 'timeZone'>;
+type CreateAgentInput = Pick<Agent, 'name'> & { timeZone?: Agent['timeZone'] | undefined };
 
 export const agentsApi = {
   createAgent(input: CreateAgentInput) {
@@ -13,6 +13,9 @@ export const agentsApi = {
   },
   listAgents() {
     return webApiClient.listAgents();
+  },
+  retryAgentProvisioning(agentId: string) {
+    return webApiClient.retryAgentProvisioning(agentId);
   },
   restoreAgent(agentId: string) {
     return webApiClient.restoreAgent(agentId);

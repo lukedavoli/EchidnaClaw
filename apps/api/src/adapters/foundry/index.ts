@@ -16,11 +16,11 @@ export interface FoundryAdapters {
   memoryStore: MemoryStoreAdapter;
 }
 
-export function createFoundryAdapters(mode: 'stubbed' | 'configured-placeholder'): {
+export function createFoundryAdapters(mode: 'stubbed' | 'configured_placeholder'): {
   adapters: FoundryAdapters;
   health: {
     description: string;
-    mode: 'stubbed' | 'configured-placeholder';
+    mode: 'stubbed' | 'configured_placeholder';
     ready: true;
   };
 } {

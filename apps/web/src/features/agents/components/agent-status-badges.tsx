@@ -12,6 +12,9 @@ export function AgentStatusBadges({ agent }: AgentStatusBadgesProps) {
       <Badge color={agent.provisioningTone} variant="light">
         Provisioning: {agent.provisioningLabel}
       </Badge>
+      <Badge color={agent.channelTone} variant="light">
+        Channel: {agent.channelLabel}
+      </Badge>
       <Badge color={agent.lifecycleTone} variant="dot">
         Lifecycle: {agent.lifecycleLabel}
       </Badge>

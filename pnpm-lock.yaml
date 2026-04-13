@@ -74,9 +74,15 @@ importers:
       '@echidna-claw/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@echidna-claw/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@echidna-claw/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@echidna-claw/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
       fastify:
         specifier: ^5.2.1
         version: 5.8.4

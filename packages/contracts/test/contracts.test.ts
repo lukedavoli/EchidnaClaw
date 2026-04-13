@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  adminAgentSummarySchema,
   agentSchema,
   credentialSecretSchema,
   credentialRefSchema,
@@ -42,6 +43,7 @@ describe('contracts schemas', () => {
         name: 'Ops Agent',
         timeZone: 'Australia/Sydney',
         headModel: 'gpt-5.4-mini',
+        primaryChannelId: 'chn_step-2',
         provisioningState: 'pending_provisioning',
         lifecycleState: 'active',
         softDeletedAt: null,
@@ -53,6 +55,49 @@ describe('contracts schemas', () => {
       id: 'agt_step-2',
       headModel: 'gpt-5.4-mini',
       lifecycleState: 'active',
+    });
+  });
+
+  it('parses admin agent summaries with primary-channel provisioning metadata', () => {
+    expect(
+      adminAgentSummarySchema.parse({
+        agent: agentSchema.parse({
+          id: 'agt_summary',
+          recordType: 'agent',
+          schemaVersion: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          correlation,
+          name: 'Summary Agent',
+          timeZone: 'Australia/Sydney',
+          headModel: 'gpt-5.4-mini',
+          primaryChannelId: 'chn_summary',
+          provisioningState: 'provisioning_failed',
+          lifecycleState: 'active',
+          softDeletedAt: null,
+          restoredAt: null,
+          factoryProfileVersion: 'factory-v1',
+          responsibilitiesSummary: 'Handles summary DTO tests.',
+        }),
+        primaryChannel: {
+          id: 'chn_summary',
+          provider: 'telegram',
+          state: 'provisioning_failed',
+          provisioningRequestedAt: timestamp,
+          provisioningStartedAt: timestamp,
+          boundAt: null,
+          lastProvisioningFailedAt: timestamp,
+          lastProvisioningErrorCode: 'telegram_bind_failed',
+          lastProvisioningErrorMessage: 'The managed bot could not be bound.',
+          recoveryAttemptCount: 1,
+          lastRecoveryRequestedAt: null,
+          conversationUrl: undefined,
+        },
+      }),
+    ).toMatchObject({
+      primaryChannel: {
+        state: 'provisioning_failed',
+      },
     });
   });
 

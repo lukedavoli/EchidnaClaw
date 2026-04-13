@@ -1,4 +1,9 @@
-import { transitionTaskState } from '@echidna-claw/domain';
+import {
+  createAgentRegistryRecords,
+  recordAgentProvisioningFailure,
+  resetAgentProvisioningForRetry,
+  transitionTaskState,
+} from '@echidna-claw/domain';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -13,6 +18,7 @@ import {
   createApproval,
   createArtifact,
   createChannel,
+  createCorrelationMetadata,
   createCredentialRef,
   createHandsRun,
   createIdempotencyRecord,
@@ -27,6 +33,58 @@ import {
   createUsageEvent,
   createWorkingContext,
 } from '../src/index.js';
+
+const repositoryConfig = {
+  version: '1' as const,
+  models: {
+    defaultModel: 'gpt-5.4-mini' as const,
+    pricing: [
+      {
+        model: 'gpt-5.4-mini' as const,
+        provider: 'azure-foundry' as const,
+        effectiveAt: '2026-04-12T00:00:00.000Z',
+        unit: '1m_tokens' as const,
+        inputUsd: 0.2,
+        outputUsd: 0.8,
+      },
+    ],
+  },
+  agents: {
+    factoryProfile: {
+      version: 'factory-v1',
+      defaultTimeZone: 'Australia/Sydney',
+      initialResponsibilitiesSummary: 'Shared operator profile.',
+    },
+  },
+  sandbox: {
+    defaultPolicy: 'standard',
+    policies: [
+      {
+        name: 'standard',
+        description: 'Default policy.',
+        allowFilesystemWriteUnder: ['/workspace'],
+        allowOutboundHosts: ['api.telegram.org'],
+        allowCommands: ['pnpm'],
+      },
+    ],
+    packageAllowlists: [
+      {
+        name: 'default-runtime',
+        packages: ['zod'],
+      },
+    ],
+  },
+  capabilities: {
+    registry: [
+      {
+        id: 'telegram.messaging',
+        name: 'Telegram direct messaging',
+        description: 'Direct Telegram messaging support.',
+        category: 'channel' as const,
+      },
+    ],
+  },
+};
 
 function createTestSuite() {
   const clock = new FakeClock(new Date('2026-04-12T00:00:00.000Z'));
@@ -75,6 +133,63 @@ describe('repository suite contracts', () => {
         created.etag,
       ),
     ).rejects.toBeInstanceOf(OptimisticConcurrencyError);
+  });
+
+  it('creates and updates agent-registry entries atomically', async () => {
+    const { repositories } = createTestSuite();
+    const createdRecords = createAgentRegistryRecords({
+      correlation: createCorrelationMetadata({
+        idempotencyKey: 'idem_registry-create',
+        traceId: 'trc_registry-create',
+      }),
+      createdAt: '2026-04-12T00:00:00.000Z',
+      name: 'Registry Agent',
+      repositoryConfig,
+    });
+
+    const createdEntry = await repositories.agentRegistry.createRegistryEntry(createdRecords);
+    expect(createdEntry.primaryChannel?.value.id).toBe(createdEntry.agent.value.primaryChannelId);
+
+    const failed = recordAgentProvisioningFailure({
+      agent: {
+        ...createdEntry.agent.value,
+        provisioningState: 'provisioning',
+      },
+      primaryChannel: {
+        ...createdEntry.primaryChannel!.value,
+        provisioningStartedAt: '2026-04-12T00:05:00.000Z',
+        state: 'provisioning',
+      },
+      failedAt: '2026-04-12T00:06:00.000Z',
+      errorCode: 'telegram_bind_failed',
+      errorMessage: 'Telegram binding failed.',
+    });
+
+    const failedEntry = await repositories.agentRegistry.recordProvisioningFailure({
+      agent: failed.agent,
+      agentEtag: createdEntry.agent.etag,
+      primaryChannel: failed.primaryChannel,
+      primaryChannelEtag: createdEntry.primaryChannel!.etag,
+    });
+
+    expect(failedEntry.agent.value.provisioningState).toBe('provisioning_failed');
+    expect(failedEntry.primaryChannel?.value.lastProvisioningErrorCode).toBe('telegram_bind_failed');
+
+    const retried = resetAgentProvisioningForRetry({
+      agent: failedEntry.agent.value,
+      primaryChannel: failedEntry.primaryChannel!.value,
+      requestedAt: '2026-04-12T00:10:00.000Z',
+    });
+
+    const retriedEntry = await repositories.agentRegistry.retryProvisioning({
+      agent: retried.agent,
+      agentEtag: failedEntry.agent.etag,
+      primaryChannel: retried.primaryChannel,
+      primaryChannelEtag: failedEntry.primaryChannel!.etag,
+    });
+
+    expect(retriedEntry.agent.value.provisioningState).toBe('pending_provisioning');
+    expect(retriedEntry.primaryChannel?.value.recoveryAttemptCount).toBe(1);
   });
 
   it('atomically appends inbound messages and replays duplicates through idempotency records', async () => {

@@ -11,11 +11,11 @@ export interface TelegramTransportAdapter {
   sendMessage(input: OutboundMessageRequest): Promise<void>;
 }
 
-export function createTelegramTransportAdapter(mode: 'stubbed' | 'configured-placeholder'): {
+export function createTelegramTransportAdapter(mode: 'stubbed' | 'configured_placeholder'): {
   adapter: TelegramTransportAdapter;
   health: {
     description: string;
-    mode: 'stubbed' | 'configured-placeholder';
+    mode: 'stubbed' | 'configured_placeholder';
     ready: true;
   };
 } {

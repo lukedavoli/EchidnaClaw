@@ -3,11 +3,7 @@ import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import {
-  isApiClientError,
-  isDependencyUnavailableError,
-  isReservedApiError,
-} from '../../../lib/api/errors.js';
+import { isApiClientError, isDependencyUnavailableError } from '../../../lib/api/errors.js';
 import { EmptyState } from '../../shell/components/empty-state.js';
 import { ErrorPanel } from '../../shell/components/error-panel.js';
 import { PageHeader } from '../../shell/components/page-header.js';
@@ -15,6 +11,7 @@ import { RefreshButton } from '../../shell/components/refresh-button.js';
 import {
   useAgentsQuery,
   useRestoreAgentMutation,
+  useRetryAgentProvisioningMutation,
   useSoftDeleteAgentMutation,
 } from '../hooks.js';
 import type { AgentViewModel } from '../models.js';
@@ -43,6 +40,7 @@ export function AgentsPage() {
   const agentsQuery = useAgentsQuery();
   const softDeleteMutation = useSoftDeleteAgentMutation();
   const restoreMutation = useRestoreAgentMutation();
+  const retryProvisioningMutation = useRetryAgentProvisioningMutation();
   const view = searchParams.get('view') === 'archived' ? 'archived' : 'active';
 
   const viewModels = (agentsQuery.data ?? []).map((agent) => toAgentViewModel(agent));
@@ -51,7 +49,8 @@ export function AgentsPage() {
   const visibleAgents = view === 'archived' ? archivedAgents : activeAgents;
   const busyAgentId =
     (softDeleteMutation.isPending ? softDeleteMutation.variables : null) ??
-    (restoreMutation.isPending ? restoreMutation.variables : null);
+    (restoreMutation.isPending ? restoreMutation.variables : null) ??
+    (retryProvisioningMutation.isPending ? retryProvisioningMutation.variables : null);
 
   async function runDialogAction() {
     if (!dialogState) {
@@ -90,6 +89,28 @@ export function AgentsPage() {
     }
   }
 
+  async function handleRetryProvisioning(agent: AgentViewModel) {
+    try {
+      await retryProvisioningMutation.mutateAsync(agent.id);
+      notifications.show({
+        color: 'teal',
+        message: `${agent.name} returned to pending provisioning.`,
+        title: 'Provisioning retry requested',
+      });
+    } catch (error) {
+      notifications.show({
+        color: 'red',
+        message:
+          isApiClientError(error) && error.traceId
+            ? `${error.message} (${error.traceId})`
+            : isApiClientError(error)
+              ? error.message
+              : 'Retry provisioning failed unexpectedly.',
+        title: 'Retry provisioning failed',
+      });
+    }
+  }
+
   return (
     <Stack gap="xl">
       <PageHeader
@@ -106,7 +127,7 @@ export function AgentsPage() {
             </Button>
           </>
         }
-        description="Manage active and archived agents, inspect lifecycle state, and reserve the future provisioning actions that later steps will wire to backend behavior."
+        description="Manage active and archived agents, inspect primary-channel provisioning state, retry failed provisioning, and jump into Telegram conversations once a handle is bound."
         title="Agents"
       />
 
@@ -130,22 +151,7 @@ export function AgentsPage() {
 
       {agentsQuery.isLoading ? <AgentListSkeleton /> : null}
 
-      {!agentsQuery.isLoading && agentsQuery.error && isReservedApiError(agentsQuery.error) ? (
-        <ErrorPanel
-          actionLabel="Retry agents"
-          description="The Step 6 admin surface is present, but agent persistence still reports not implemented. This shell is ready for the backend slice to land behind it."
-          onAction={() => {
-            void agentsQuery.refetch();
-          }}
-          title="Agents are reserved in the backend"
-          tone="info"
-          traceId={isApiClientError(agentsQuery.error) ? agentsQuery.error.traceId : null}
-        />
-      ) : null}
-
-      {!agentsQuery.isLoading &&
-      agentsQuery.error &&
-      isDependencyUnavailableError(agentsQuery.error) ? (
+      {!agentsQuery.isLoading && agentsQuery.error && isDependencyUnavailableError(agentsQuery.error) ? (
         <ErrorPanel
           actionLabel="Retry agents"
           description="The agent routes exist, but one or more backing dependencies are unavailable right now."
@@ -160,7 +166,6 @@ export function AgentsPage() {
 
       {!agentsQuery.isLoading &&
       agentsQuery.error &&
-      !isReservedApiError(agentsQuery.error) &&
       !isDependencyUnavailableError(agentsQuery.error) ? (
         <ErrorPanel
           actionLabel="Retry agents"
@@ -184,7 +189,7 @@ export function AgentsPage() {
         <EmptyState
           actionLabel="Create the first agent"
           actionTo="/agents/new"
-          description="No active agents exist yet. Create one to establish the operator lifecycle shell that later provisioning work will attach to."
+          description="No active agents exist yet. Create one to establish a registry entry and placeholder primary channel."
           title="No active agents"
         />
       ) : null}
@@ -194,7 +199,7 @@ export function AgentsPage() {
       visibleAgents.length === 0 &&
       view === 'archived' ? (
         <EmptyState
-          description="Archived agents will appear here after a soft-delete action."
+          description="Archived agents appear here after a soft-delete action."
           title="No archived agents"
         />
       ) : null}
@@ -202,8 +207,8 @@ export function AgentsPage() {
       {!agentsQuery.isLoading && !agentsQuery.error && visibleAgents.length > 0 ? (
         <>
           <Text c="dimmed" size="sm">
-            Reserved controls stay visible on each card so later lifecycle work can plug in without a
-            UI rewrite.
+            Primary-channel summaries drive the retry and jump-to-conversation actions on each
+            card.
           </Text>
           <AgentList
             agents={visibleAgents}
@@ -213,6 +218,9 @@ export function AgentsPage() {
                 agent,
                 mode: 'archive',
               });
+            }}
+            onRetry={(agent) => {
+              void handleRetryProvisioning(agent);
             }}
             onRestore={(agent) => {
               setDialogState({
@@ -226,10 +234,18 @@ export function AgentsPage() {
 
       <ArchiveAgentDialog
         agentName={dialogState?.agent.name ?? ''}
-        loading={softDeleteMutation.isPending || restoreMutation.isPending}
+        loading={
+          softDeleteMutation.isPending ||
+          restoreMutation.isPending ||
+          retryProvisioningMutation.isPending
+        }
         mode={dialogState?.mode ?? 'archive'}
         onClose={() => {
-          if (!softDeleteMutation.isPending && !restoreMutation.isPending) {
+          if (
+            !softDeleteMutation.isPending &&
+            !restoreMutation.isPending &&
+            !retryProvisioningMutation.isPending
+          ) {
             setDialogState(null);
           }
         }}

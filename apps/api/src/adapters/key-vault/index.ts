@@ -13,11 +13,11 @@ export interface KeyVaultAdapters {
   secrets: SecretAccessAdapter;
 }
 
-export function createKeyVaultAdapters(mode: 'stubbed' | 'configured-placeholder'): {
+export function createKeyVaultAdapters(mode: 'stubbed' | 'configured_placeholder'): {
   adapters: KeyVaultAdapters;
   health: {
     description: string;
-    mode: 'stubbed' | 'configured-placeholder';
+    mode: 'stubbed' | 'configured_placeholder';
     ready: true;
   };
 } {

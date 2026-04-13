@@ -51,3 +51,14 @@ export function useRestoreAgentMutation() {
     },
   });
 }
+
+export function useRetryAgentProvisioningMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: agentsApi.retryAgentProvisioning,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: agentsQueryKey });
+    },
+  });
+}

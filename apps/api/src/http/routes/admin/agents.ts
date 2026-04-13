@@ -14,6 +14,11 @@ const routeBodySchema = z.object({ correlation: correlationMetadataSchema }).str
 export function registerAdminAgentRoutes(app: FastifyInstance): void {
   app.get('/agents', async () => app.dependencies.services.webControlPlaneService.listAgents());
 
+  app.get('/agents/:agentId', async (request) => {
+    const params = agentIdParamsSchema.parse(request.params) as z.infer<typeof agentIdParamsSchema>;
+    return app.dependencies.services.webControlPlaneService.getAgent(params.agentId);
+  });
+
   app.post('/agents', async (request, reply) => {
     const body = webCreateAgentRequestSchema.parse(request.body);
     bindRequestCorrelation(request, { correlation: body.correlation });
@@ -45,6 +50,20 @@ export function registerAdminAgentRoutes(app: FastifyInstance): void {
     });
 
     return app.dependencies.services.webControlPlaneService.restoreAgent({
+      agentId: params.agentId,
+      correlation: body.correlation,
+    });
+  });
+
+  app.post('/agents/:agentId/provisioning/retry', async (request) => {
+    const params = agentIdParamsSchema.parse(request.params) as z.infer<typeof agentIdParamsSchema>;
+    const body = routeBodySchema.parse(request.body) as z.infer<typeof routeBodySchema>;
+    bindRequestCorrelation(request, {
+      agentId: params.agentId,
+      correlation: body.correlation,
+    });
+
+    return app.dependencies.services.webControlPlaneService.retryAgentProvisioning({
       agentId: params.agentId,
       correlation: body.correlation,
     });
