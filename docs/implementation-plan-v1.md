@@ -584,23 +584,30 @@ Exit criteria:
 
 ## Recommended Parallel Thread Plan for Codex
 
-The recommended thread split during implementation is:
+Use this table as the execution map for Codex threads. A step is unblocked when every item in `Depends on` is stable enough to act as a contract boundary; once unblocked, rows with disjoint write scopes can be executed in parallel.
 
-1. Foundation thread:
-   Freeze workspace structure, shared schemas, configs, and common tooling first.
-2. Wave 1 after the foundation stabilizes:
-   - Thread A: `infra/` and deployment workflow
-   - Thread B: `apps/api` skeleton plus persistence integration
-   - Thread C: `apps/web` shell and control-plane UI
-3. Wave 2 after task and tool contracts stabilize:
-   - Thread D: Telegram adapter, Head runtime, working context, memory integration
-   - Thread E: Hands runtime and task execution
-   - Thread F: Sandbox runtime and guardrails
-4. Wave 3 after the runtime paths are proven:
-   - Thread G: scheduling, approvals, credentials
-   - Thread H: observability and analytics backend
-   - Thread I: final UI wiring for analytics and provisioning
-5. Final convergence:
-   Reunify in one thread for end-to-end fixes, contract cleanup, tests, and release readiness.
+| Step | Scope | Depends on | Unblocked / parallel note |
+| --- | --- | --- | --- |
+| 1 | Bootstrap the monorepo and engineering baseline | None | Start immediately and keep single-threaded. |
+| 2 | Define shared domain models, state machines, and contracts | 1 | Start after the workspace and tooling layout from Step 1 is frozen. |
+| 3 | Define the infrastructure-as-code skeleton | 2 | Start after Step 2 stabilizes; run in parallel with Step 4. |
+| 4 | Establish local development and deployment workflows | 2 | Start after Step 2 stabilizes; keep ownership inside tooling, CI, and orchestration files so it can run in parallel with Step 3. |
+| 5 | Implement the core persistence layer | 2, 3 | Start after contracts and infrastructure assumptions are stable; keep mostly single-threaded until repository APIs settle. |
+| 6 | Build the main API and control-plane service skeleton | 2 | Start after service contracts stabilize; can run in parallel with Steps 5 and 7. |
+| 7 | Build the web control plane shell | 2, initial API contract outline from 6 | Start once the frontend has a stable API shape to target; can continue in parallel with Steps 5 and 6. |
+| 8 | Implement the agent registry and provisioning lifecycle | 5, 6, 7 | Start once persistence, backend shell, and initial UI flow all exist. |
+| 9 | Implement the Telegram channel adapter | 5, 6, 8 | Start once agent registry APIs and message persistence are stable; can run in parallel with Step 10. |
+| 10 | Implement the Head runtime and prompt layering | 5, 6, 8 | Start once backend contracts and per-agent lifecycle surfaces are stable; can run in parallel with Step 9. |
+| 11 | Implement working context, episode rotation, and supersession control | 9, 10 | Start once the live message path and Head runtime both work; keep mostly single-threaded. |
+| 12 | Implement the task envelope, queue, and run journal model | 2, 5, 6 | Start once core contracts, persistence, and the main service shell are stable; can overlap with early Step 13 work after the task contract freezes. |
+| 13 | Implement the Hands worker runtime | 12 | Start once the task envelope and queue model are stable; can run in parallel with Step 14. |
+| 14 | Implement the execution sandbox service | 12 | Start once the sandbox and tool contract is stable; keep sandbox-specific code isolated so it can run in parallel with Step 13. |
+| 15 | Implement the unified scheduling and due-task pipeline | 10, 12 | Start once Head routing and the task pipeline are stable; can run in parallel with Step 16. |
+| 16 | Implement approvals and credential lifecycle management | 9, 12 | Start once the Telegram approval surface and task pipeline exist; can run in parallel with Steps 15 and 18. |
+| 17 | Integrate Foundry Memory Store and memory policy | 10, 11 | Start once the Head interface and working-context boundaries are stable; can run alongside late runtime work. |
+| 18 | Implement observability, audit history, and usage accounting | 9, 10, 12, 13, 14 | Start once the core runtime identifiers and usage hooks exist; can run in parallel with Step 19. |
+| 19 | Complete the web control plane | 7, 8, 18 | Start once real lifecycle APIs and analytics endpoints are stable; can run in parallel with Step 20 if provisioning APIs already exist. |
+| 20 | Add Telegram provisioning handoff and recovery flow | 7, 8, 9 | Start once the operator-facing web path, agent lifecycle, and Telegram adapter all exist; can continue in parallel with Step 19. |
+| 21 | Harden failure modes, testing, and release readiness | 3, 4, 8-20 | Start subsystem tests as each slice lands, but final stabilization and release sign-off wait for the implemented runtime, UI, infra, and ops paths to converge. |
 
-The key constraint is simple: parallelize only after interfaces are stable, and keep each thread's write scope narrow enough that merges remain mechanical rather than architectural.
+The key constraint is unchanged: parallelize only after interfaces are stable, and keep each thread's write scope narrow enough that merges remain mechanical rather than architectural.
