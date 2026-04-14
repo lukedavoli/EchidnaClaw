@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import type { WorkingContext } from '@echidna-claw/contracts';
 import {
   createAgent,
   createChannel,
@@ -28,6 +29,7 @@ function createCorrelation(idempotencyKey = 'idem_request-1', traceId = 'trc_tra
 async function seedHeadRuntimeRecords(app: ReturnType<typeof buildApiServer>, options: {
   messageText: string;
   trusted?: boolean;
+  workingContextOverrides?: Partial<WorkingContext>;
 }): Promise<{
   agentId: 'agt_test-agent';
   channelId: 'chn_test-channel';
@@ -65,8 +67,12 @@ async function seedHeadRuntimeRecords(app: ReturnType<typeof buildApiServer>, op
       agentId: 'agt_test-agent',
       correlation,
       id: 'ctx_main-context',
-      lastTrustedMessageSequence: 0,
+      latestInboundSequence: 0,
+      latestProcessedSequence: 0,
+      episodeLocalDate: '2026-04-13',
+      episodeTurnCount: 0,
       summary: 'Deployment monitoring summary.',
+      ...options.workingContextOverrides,
     }),
   );
 
@@ -297,7 +303,6 @@ describe('route implementations and head runtime behavior', () => {
           inboundMessageIds: [seeded.inboundMessageId],
           readThroughMessageSequence: 1,
         },
-        workingContextId: seeded.workingContextId,
       },
       url: '/api/internal/runtime/head/start-turn',
     });
@@ -337,7 +342,8 @@ describe('route implementations and head runtime behavior', () => {
     );
     expect(storedContext?.value.conversationCursor).toContain('stub-conversation:');
     expect(storedContext?.value.activeHeadTurnId).toBeNull();
-    expect(storedContext?.value.lastTrustedMessageSequence).toBe(1);
+    expect(storedContext?.value.latestProcessedSequence).toBe(1);
+    expect(storedContext?.value.episodeTurnCount).toBe(1);
   });
 
   it('rejects untrusted inbound-message turns before model execution', async () => {
@@ -369,7 +375,6 @@ describe('route implementations and head runtime behavior', () => {
           inboundMessageIds: [seeded.inboundMessageId],
           readThroughMessageSequence: 1,
         },
-        workingContextId: seeded.workingContextId,
       },
       url: '/api/internal/runtime/head/start-turn',
     });
@@ -413,7 +418,6 @@ describe('route implementations and head runtime behavior', () => {
           inboundMessageIds: [seeded.inboundMessageId],
           readThroughMessageSequence: 1,
         },
-        workingContextId: seeded.workingContextId,
       },
       url: '/api/internal/runtime/head/start-turn',
     });
@@ -452,8 +456,12 @@ describe('route implementations and head runtime behavior', () => {
       taskId: null,
       scheduleId: null,
       dueAt: null,
+      claimedAt: '2026-04-13T06:00:00.000Z',
       startedAt: '2026-04-13T06:00:00.000Z',
       completedAt: null,
+      staleCheckedAt: null,
+      episodeLocalDate: '2026-04-13',
+      episodeTurnIndex: 1,
       supersededBySequence: null,
       providerConversationId: 'stub-conversation:hdr_running-turn',
       providerRunId: 'stub-run:hdr_running-turn',
@@ -466,6 +474,8 @@ describe('route implementations and head runtime behavior', () => {
       {
         ...storedContext!.value,
         activeHeadTurnId: 'hdr_running-turn',
+        activeHeadTurnStartedAt: '2026-04-13T06:00:00.000Z',
+        activeHeadTurnReadThroughSequence: 1,
       },
       storedContext!.etag,
     );
@@ -495,5 +505,118 @@ describe('route implementations and head runtime behavior', () => {
       seeded.workingContextId,
     );
     expect(updatedContext?.value.activeHeadTurnId).toBeNull();
+  });
+
+  it('rotates the active conversation when the stored episode date is stale', async () => {
+    const config = createTestApiConfig();
+    const app = buildApiServer(config);
+    apps.push(app);
+    const seeded = await seedHeadRuntimeRecords(app, {
+      messageText: 'Please continue the deployment check.',
+      workingContextOverrides: {
+        conversationCursor: 'stale-conversation',
+        episodeLocalDate: '2026-04-01',
+        episodeTurnCount: 3,
+      },
+    });
+
+    const response = await app.inject({
+      headers: {
+        [INTERNAL_RUNTIME_AUTH_HEADER]: config.internalRuntime.authToken,
+      },
+      method: 'POST',
+      payload: {
+        agentId: seeded.agentId,
+        correlation: {
+          ...createCorrelation('idem_request-rotate-date', 'trc_trace-rotate-date'),
+          requestedBy: {
+            id: 'telegram-user-1',
+            kind: 'telegram',
+          },
+        },
+        trigger: {
+          kind: 'trusted_messages',
+          channelId: seeded.channelId,
+          inboundMessageIds: [seeded.inboundMessageId],
+          readThroughMessageSequence: 1,
+        },
+      },
+      url: '/api/internal/runtime/head/start-turn',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().headTurn.providerConversationId).toContain('stub-conversation:');
+    expect(response.json().headTurn.providerConversationId).not.toBe('stale-conversation');
+
+    const storedContext = await app.dependencies.adapters.repositories.workingContexts.get(
+      seeded.agentId,
+      seeded.workingContextId,
+    );
+    expect(storedContext?.value.episodeTurnCount).toBe(1);
+    expect(storedContext?.value.conversationCursor).toContain('stub-conversation:');
+  });
+
+  it('rotates the active conversation after 20 authoritative turns', async () => {
+    const sydneyToday = new Intl.DateTimeFormat('en-CA', {
+      day: '2-digit',
+      month: '2-digit',
+      timeZone: 'Australia/Sydney',
+      year: 'numeric',
+    })
+      .formatToParts(new Date())
+      .reduce<Record<string, string>>((parts, part) => {
+        if (part.type === 'year' || part.type === 'month' || part.type === 'day') {
+          parts[part.type] = part.value;
+        }
+
+        return parts;
+      }, {});
+    const currentEpisodeDate = `${sydneyToday.year}-${sydneyToday.month}-${sydneyToday.day}`;
+
+    const config = createTestApiConfig();
+    const app = buildApiServer(config);
+    apps.push(app);
+    const seeded = await seedHeadRuntimeRecords(app, {
+      messageText: 'Please continue the deployment check.',
+      workingContextOverrides: {
+        conversationCursor: 'turn-limit-conversation',
+        episodeLocalDate: currentEpisodeDate,
+        episodeTurnCount: 20,
+      },
+    });
+
+    const response = await app.inject({
+      headers: {
+        [INTERNAL_RUNTIME_AUTH_HEADER]: config.internalRuntime.authToken,
+      },
+      method: 'POST',
+      payload: {
+        agentId: seeded.agentId,
+        correlation: {
+          ...createCorrelation('idem_request-rotate-count', 'trc_trace-rotate-count'),
+          requestedBy: {
+            id: 'telegram-user-1',
+            kind: 'telegram',
+          },
+        },
+        trigger: {
+          kind: 'trusted_messages',
+          channelId: seeded.channelId,
+          inboundMessageIds: [seeded.inboundMessageId],
+          readThroughMessageSequence: 1,
+        },
+      },
+      url: '/api/internal/runtime/head/start-turn',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().headTurn.providerConversationId).toContain('stub-conversation:');
+    expect(response.json().headTurn.providerConversationId).not.toBe('turn-limit-conversation');
+
+    const storedContext = await app.dependencies.adapters.repositories.workingContexts.get(
+      seeded.agentId,
+      seeded.workingContextId,
+    );
+    expect(storedContext?.value.episodeTurnCount).toBe(1);
   });
 });

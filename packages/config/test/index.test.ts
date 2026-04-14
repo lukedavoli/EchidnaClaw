@@ -30,6 +30,7 @@ describe('@echidna-claw/config', () => {
     expect(config.sharedCloud).toBeNull();
     expect(config.webPublicBaseUrl).toBe('http://127.0.0.1:5173');
     expect(config.publicBaseUrl).toBe('http://127.0.0.1:3001');
+    expect(config.head.debounceWindowMs).toBe(750);
     expect(config.telegram.webhookSecretToken).toBe('local-telegram-webhook-token');
     expect(config.internalRuntime.authToken).toBe('local-internal-runtime-token');
     expect(config.observability.requestLoggingEnabled).toBe(true);

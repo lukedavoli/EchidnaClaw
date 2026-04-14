@@ -3,6 +3,7 @@ import type { ApiConfig } from '@echidna-claw/config';
 export function createTestApiConfig(
   overrides: Partial<ApiConfig> & {
     foundry?: Partial<ApiConfig['foundry']>;
+    head?: Partial<ApiConfig['head']>;
     hands?: Partial<ApiConfig['hands']>;
     internalRuntime?: Partial<ApiConfig['internalRuntime']>;
     observability?: Partial<ApiConfig['observability']>;
@@ -13,6 +14,9 @@ export function createTestApiConfig(
   const baseConfig: ApiConfig = {
     foundry: {
       defaultDeploymentName: 'gpt-5.4-mini',
+    },
+    head: {
+      debounceWindowMs: 750,
     },
     hands: {
       jobTarget: 'local-hands-job',
@@ -49,6 +53,10 @@ export function createTestApiConfig(
     foundry: {
       ...baseConfig.foundry,
       ...overrides.foundry,
+    },
+    head: {
+      ...baseConfig.head,
+      ...overrides.head,
     },
     hands: {
       ...baseConfig.hands,

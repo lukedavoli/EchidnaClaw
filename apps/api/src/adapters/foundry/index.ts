@@ -1,13 +1,18 @@
 import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
 import { NotImplementedYetError } from '../../http/errors.js';
 import { createLiveHeadRuntimeAdapter } from './live-head-runtime-adapter.js';
+import { createLiveWorkingContextSummarizerAdapter } from './live-working-context-summarizer-adapter.js';
 import { createLocalHeadRuntimeAdapter } from './local-head-runtime-adapter.js';
+import { createLocalWorkingContextSummarizerAdapter } from './local-working-context-summarizer-adapter.js';
 import type {
   CancelFoundryTurnInput,
   FoundryHeadTurnResult,
   HeadRuntimeAdapter,
   PreparedHeadTool,
   PreparedHeadTurnInput,
+  WorkingContextSummarizerAdapter,
+  WorkingContextSummaryInput,
+  WorkingContextSummaryResult,
 } from './types.js';
 
 export type {
@@ -16,6 +21,9 @@ export type {
   HeadRuntimeAdapter,
   PreparedHeadTool,
   PreparedHeadTurnInput,
+  WorkingContextSummarizerAdapter,
+  WorkingContextSummaryInput,
+  WorkingContextSummaryResult,
 };
 
 export interface MemoryStoreAdapter {
@@ -25,6 +33,7 @@ export interface MemoryStoreAdapter {
 export interface FoundryAdapters {
   headRuntime: HeadRuntimeAdapter;
   memoryStore: MemoryStoreAdapter;
+  workingContextSummarizer: WorkingContextSummarizerAdapter;
 }
 
 export function createFoundryAdapters(config: ApiRuntimeConfig): {
@@ -42,6 +51,13 @@ export function createFoundryAdapters(config: ApiRuntimeConfig): {
           defaultDeploymentName: config.foundry.defaultDeploymentName,
           projectEndpoint: config.sharedCloud!.foundry.projectEndpoint,
         });
+  const workingContextSummarizer =
+    config.runtimeMode === 'local-minimal'
+      ? createLocalWorkingContextSummarizerAdapter()
+      : createLiveWorkingContextSummarizerAdapter({
+          defaultDeploymentName: config.foundry.defaultDeploymentName,
+          projectEndpoint: config.sharedCloud!.foundry.projectEndpoint,
+        });
 
   return {
     adapters: {
@@ -54,6 +70,7 @@ export function createFoundryAdapters(config: ApiRuntimeConfig): {
           );
         },
       },
+      workingContextSummarizer,
     },
     health: {
       description:

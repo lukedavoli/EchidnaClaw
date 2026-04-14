@@ -88,6 +88,7 @@ function toCompletionKind(input: {
 }
 
 async function resolveFunctionCalls(options: {
+  defaultDeploymentName: string;
   openAIClient: OpenAIClient;
   response: Response;
   tools: readonly PreparedHeadTool[];
@@ -181,7 +182,7 @@ async function resolveFunctionCalls(options: {
         agentId: options.turn.agentId,
         headTurnId: options.turn.headTurnId,
       },
-      model: options.turn.model,
+      model: options.turn.model || options.defaultDeploymentName,
       parallel_tool_calls: false,
       previous_response_id: response.id,
       safety_identifier: options.turn.agentId,
@@ -255,6 +256,7 @@ export function createLiveHeadRuntimeAdapter(options: {
         finalResponse,
         hadFunctionCalls,
       } = await resolveFunctionCalls({
+        defaultDeploymentName: options.defaultDeploymentName,
         openAIClient,
         response: initialResponse,
         tools: input.enabledTools,

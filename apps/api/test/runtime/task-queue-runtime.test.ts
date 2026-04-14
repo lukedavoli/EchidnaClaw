@@ -101,8 +101,13 @@ async function seedTrustedMessageFlow(input: {
         agentId: 'agt_runtime',
         correlation,
         id: 'ctx_runtime',
-        lastTrustedMessageSequence: 0,
+        latestInboundSequence: 0,
+        latestProcessedSequence: 0,
+        episodeLocalDate: null,
+        episodeTurnCount: 0,
         summary: 'Deployment follow-up context.',
+        summaryUpdatedAt: null,
+        currentObjective: null,
       }),
     );
   }
@@ -190,6 +195,38 @@ function createHandsJobStub(startRunCalls: Array<Record<string, unknown>>): Hand
   };
 }
 
+function createWorkingContextSummaryServiceStub() {
+  return {
+    async refreshAfterHandsEvent(input: {
+      eventSummary: string;
+      refreshedAt: string;
+      workingContext: { currentObjective: string | null; openQuestions: string[]; summary: string };
+    }) {
+      return {
+        currentObjective: input.workingContext.currentObjective,
+        latestHandsStatus: input.eventSummary,
+        openQuestions: input.workingContext.openQuestions,
+        summary: input.workingContext.summary || input.eventSummary,
+        summaryUpdatedAt: input.refreshedAt,
+      };
+    },
+    async refreshAfterTrustedTurn(input: {
+      assistantReplyText: string | null;
+      completedAt: string;
+      trustedMessages: Array<{ body: { text: string } }>;
+      workingContext: { latestHandsStatus: string | null; summary: string };
+    }) {
+      return {
+        currentObjective: input.trustedMessages.at(-1)?.body.text ?? null,
+        latestHandsStatus: input.workingContext.latestHandsStatus,
+        openQuestions: [],
+        summary: input.assistantReplyText ?? input.workingContext.summary,
+        summaryUpdatedAt: input.completedAt,
+      };
+    },
+  };
+}
+
 function createServices(toolName: string, args: Record<string, unknown>) {
   const loggerFactory = createLoggerFactory({
     level: 'debug',
@@ -215,6 +252,7 @@ function createServices(toolName: string, args: Record<string, unknown>) {
       repositories: repositoryBundle.repositories,
       repositoryConfig: loadRepositoryConfig(),
       taskQueueService,
+      workingContextSummaryService: createWorkingContextSummaryServiceStub(),
     }),
   };
 }
@@ -249,7 +287,6 @@ describe('task queue runtime integration', () => {
         inboundMessageIds: [seeded.inboundMessageId],
         readThroughMessageSequence: 1,
       },
-      workingContextId: seeded.workingContextId,
     });
 
     expect(result.effectSummary.taskRequested).toBe(true);
@@ -304,7 +341,6 @@ describe('task queue runtime integration', () => {
         inboundMessageIds: [seededOne.inboundMessageId],
         readThroughMessageSequence: 1,
       },
-      workingContextId: seededOne.workingContextId,
     });
     const second = await services.headRuntimeService.startTurn({
       agentId: seededTwo.agentId,
@@ -322,7 +358,6 @@ describe('task queue runtime integration', () => {
         inboundMessageIds: [seededTwo.inboundMessageId],
         readThroughMessageSequence: 2,
       },
-      workingContextId: seededTwo.workingContextId,
     });
 
     const openTasks = await services.repositories.tasks.listOpenTasks(seededTwo.agentId);
@@ -381,7 +416,6 @@ describe('task queue runtime integration', () => {
         inboundMessageIds: [seeded.inboundMessageId],
         readThroughMessageSequence: 1,
       },
-      workingContextId: seeded.workingContextId,
     });
 
     expect(result.replyDraft?.body.text).toContain('Open tasks: 1');
