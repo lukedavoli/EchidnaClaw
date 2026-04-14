@@ -38,4 +38,31 @@ describe('buildApiServer', () => {
       ready: true,
     });
   });
+
+  it('allows browser requests from the configured web origin and the localhost variant', async () => {
+    const app = buildApiServer(createTestApiConfig());
+    apps.push(app);
+
+    const configuredOriginResponse = await app.inject({
+      headers: {
+        origin: 'http://127.0.0.1:5173',
+      },
+      method: 'GET',
+      url: '/healthz',
+    });
+    const localhostVariantResponse = await app.inject({
+      headers: {
+        origin: 'http://localhost:5173',
+      },
+      method: 'GET',
+      url: '/healthz',
+    });
+
+    expect(configuredOriginResponse.headers['access-control-allow-origin']).toBe(
+      'http://127.0.0.1:5173',
+    );
+    expect(localhostVariantResponse.headers['access-control-allow-origin']).toBe(
+      'http://localhost:5173',
+    );
+  });
 });
