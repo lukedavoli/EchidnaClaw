@@ -305,7 +305,7 @@ describe('repository suite contracts', () => {
     await repositories.tasks.createTask(
       createTask({
         id: 'tsk_high',
-        queue: { priority: 'high' },
+        queue: { lane: 'scheduled', priority: 'high' },
         dueAt: '2026-04-12T02:00:00.000Z',
         createdAt: '2026-04-12T00:00:01.000Z',
         updatedAt: '2026-04-12T00:00:01.000Z',
@@ -314,15 +314,37 @@ describe('repository suite contracts', () => {
     await repositories.tasks.createTask(
       createTask({
         id: 'tsk_urgent',
-        queue: { priority: 'urgent' },
+        queue: { lane: 'user_requested', priority: 'urgent' },
         dueAt: '2026-04-12T03:00:00.000Z',
         createdAt: '2026-04-12T00:00:02.000Z',
         updatedAt: '2026-04-12T00:00:02.000Z',
       }),
     );
+    await repositories.tasks.createTask(
+      createTask({
+        id: 'tsk_user-normal',
+        queue: { lane: 'user_requested', priority: 'normal' },
+        dueAt: null,
+        createdAt: '2026-04-12T00:00:03.000Z',
+        updatedAt: '2026-04-12T00:00:03.000Z',
+      }),
+    );
 
     const queuedTasks = await repositories.tasks.listQueuedTasks('agt_persistence');
-    expect(queuedTasks.map((task) => task.value.id)).toEqual(['tsk_urgent', 'tsk_high']);
+    expect(queuedTasks.map((task) => task.value.id)).toEqual([
+      'tsk_urgent',
+      'tsk_user-normal',
+      'tsk_high',
+    ]);
+
+    const queuedForDispatch = await repositories.tasks.listQueuedTasksForDispatch(
+      'agt_persistence',
+    );
+    expect(queuedForDispatch.map((task) => task.value.id)).toEqual([
+      'tsk_urgent',
+      'tsk_user-normal',
+      'tsk_high',
+    ]);
 
     await repositories.schedules.create(
       createSchedule({
@@ -344,6 +366,189 @@ describe('repository suite contracts', () => {
       'sch_earlier',
       'sch_later',
     ]);
+  });
+
+  it('creates and merges queued task graphs atomically with journal state', async () => {
+    const { repositories } = createTestSuite();
+    await repositories.agents.create(createAgent());
+    const createdWorkingContext = await repositories.workingContexts.create(
+      createWorkingContext({ openTaskIds: [] }),
+    );
+
+    const created = await repositories.tasks.createTaskWithEnvelope({
+      idempotencyRecord: createIdempotencyRecord({
+        id: 'idr_enqueue-graph',
+        key: 'enqueue-graph-1',
+        scope: 'head:create-task',
+        resultReference: 'tsk_graph',
+      }),
+      runJournal: createRunJournal({
+        id: 'rjn_graph',
+        handsRunId: null,
+        scope: 'head_turn',
+        scopeId: 'hdr_graph',
+        taskId: 'tsk_graph',
+      }),
+      runJournalEntry: createRunJournalEntry({
+        id: 'rje_graph',
+        journalId: 'rjn_graph',
+        message: 'Queued graph task.',
+      }),
+      task: createTask({
+        id: 'tsk_graph',
+        activeTaskEnvelopeId: 'env_graph',
+        currentRunJournalId: 'rjn_graph',
+      }),
+      taskEnvelope: createTaskEnvelope({
+        id: 'env_graph',
+        taskId: 'tsk_graph',
+      }),
+      workingContext: {
+        ...createdWorkingContext.value,
+        activeTaskId: 'tsk_graph',
+        openTaskIds: ['tsk_graph'],
+        updatedAt: '2026-04-12T00:05:00.000Z',
+      },
+      workingContextEtag: createdWorkingContext.etag,
+    });
+
+    expect(created.task.value.id).toBe('tsk_graph');
+    expect(created.taskEnvelope?.value.taskId).toBe('tsk_graph');
+    expect(created.runJournal.value.taskId).toBe('tsk_graph');
+    expect(created.workingContext.value.openTaskIds).toEqual(['tsk_graph']);
+
+    const mergedTask = {
+      ...created.task.value,
+      notes: 'Merged note.',
+      updatedAt: '2026-04-12T00:06:00.000Z',
+    };
+    const mergedJournal = {
+      ...created.runJournal.value,
+      summary: 'Merged graph task.',
+      lastEntryAt: '2026-04-12T00:06:00.000Z',
+      updatedAt: '2026-04-12T00:06:00.000Z',
+    };
+    const merged = await repositories.tasks.mergeTaskIntoQueue({
+      runJournal: mergedJournal,
+      runJournalEtag: created.runJournal.etag,
+      runJournalEntry: createRunJournalEntry({
+        id: 'rje_graph-merge',
+        journalId: created.runJournal.value.id,
+        entryKind: 'action',
+        message: 'Merged duplicate task request.',
+      }),
+      task: mergedTask,
+      taskEtag: created.task.etag,
+      workingContext: {
+        ...created.workingContext.value,
+        updatedAt: '2026-04-12T00:06:00.000Z',
+      },
+      workingContextEtag: created.workingContext.etag,
+    });
+
+    expect(merged.task.value.notes).toBe('Merged note.');
+    expect(merged.runJournal.value.summary).toBe('Merged graph task.');
+  });
+
+  it('records launch requests and journal summary updates atomically', async () => {
+    const { repositories } = createTestSuite();
+    await repositories.agents.create(createAgent());
+    const createdWorkingContext = await repositories.workingContexts.create(
+      createWorkingContext({ openTaskIds: [] }),
+    );
+    const created = await repositories.tasks.createTaskWithEnvelope({
+      runJournal: createRunJournal({
+        id: 'rjn_launch',
+        handsRunId: null,
+        scope: 'head_turn',
+        scopeId: 'hdr_launch',
+        taskId: 'tsk_launch',
+      }),
+      runJournalEntry: createRunJournalEntry({
+        id: 'rje_launch-open',
+        journalId: 'rjn_launch',
+        message: 'Queued launch task.',
+      }),
+      task: createTask({
+        id: 'tsk_launch',
+        activeTaskEnvelopeId: 'env_launch',
+        currentRunJournalId: 'rjn_launch',
+      }),
+      taskEnvelope: createTaskEnvelope({
+        id: 'env_launch',
+        taskId: 'tsk_launch',
+      }),
+      workingContext: {
+        ...createdWorkingContext.value,
+        activeTaskId: 'tsk_launch',
+        openTaskIds: ['tsk_launch'],
+        updatedAt: '2026-04-12T00:07:00.000Z',
+      },
+      workingContextEtag: createdWorkingContext.etag,
+    });
+
+    const launchRequested = await repositories.tasks.recordTaskLaunchRequest({
+      idempotencyRecord: createIdempotencyRecord({
+        id: 'idr_launch-request',
+        key: 'launch-request-1',
+        scope: 'hands:start-request',
+        status: 'reserved',
+        resultReference: 'tsk_launch',
+      }),
+      task: {
+        ...created.task.value,
+        launchState: {
+          status: 'requested',
+          requestedAt: '2026-04-12T00:08:00.000Z',
+          lastAttemptAt: '2026-04-12T00:08:00.000Z',
+          lastIdempotencyKey: 'idem_launch-request',
+          attemptCount: 1,
+        },
+        updatedAt: '2026-04-12T00:08:00.000Z',
+      },
+      taskEtag: created.task.etag,
+      taskEnvelope: {
+        ...created.taskEnvelope!.value,
+        dispatchIdempotencyKey: 'idem_launch-request',
+        updatedAt: '2026-04-12T00:08:00.000Z',
+      },
+      taskEnvelopeEtag: created.taskEnvelope!.etag,
+    });
+
+    expect(launchRequested.task.value.launchState.status).toBe('requested');
+    expect(launchRequested.idempotencyRecord.value.status).toBe('reserved');
+
+    const appended = await repositories.runJournals.appendEntryAndUpdateJournal({
+      entry: createRunJournalEntry({
+        id: 'rje_launch-progress',
+        journalId: created.runJournal.value.id,
+        entryKind: 'progress',
+        message: 'Waiting for Hands startup.',
+      }),
+      journal: {
+        ...created.runJournal.value,
+        summary: 'Waiting for Hands startup.',
+        lastEntryAt: '2026-04-12T00:08:30.000Z',
+        updatedAt: '2026-04-12T00:08:30.000Z',
+      },
+      journalEtag: created.runJournal.etag,
+      task: {
+        ...launchRequested.task.value,
+        progressSummary: {
+          headline: 'Waiting for Hands startup.',
+          waitingForUser: false,
+          lastActor: 'system',
+        },
+        lastProgressAt: '2026-04-12T00:08:30.000Z',
+        updatedAt: '2026-04-12T00:08:30.000Z',
+      },
+      taskEtag: launchRequested.task.etag,
+    });
+
+    expect(appended.journal.value.summary).toBe('Waiting for Hands startup.');
+    expect(appended.task?.value.progressSummary?.headline).toBe(
+      'Waiting for Hands startup.',
+    );
   });
 
   it('writes blob-backed artifact metadata with default retention and cleanup support', async () => {

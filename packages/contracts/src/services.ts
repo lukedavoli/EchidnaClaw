@@ -16,6 +16,7 @@ import {
   isoDateTimeSchema,
   messageSequenceSchema,
   nonEmptyStringSchema,
+  positiveIntegerSchema,
   sandboxSessionIdSchema,
   taskEnvelopeIdSchema,
   taskIdSchema,
@@ -37,6 +38,8 @@ export const handsStartRunRequestSchema = z
   .object({
     taskId: taskIdSchema,
     taskEnvelopeId: taskEnvelopeIdSchema,
+    attemptNumber: positiveIntegerSchema,
+    dispatchIdempotencyKey: nonEmptyStringSchema,
     correlation: correlationMetadataSchema,
   })
   .strict();

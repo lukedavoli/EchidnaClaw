@@ -23,19 +23,27 @@ describe('persistence document mappers', () => {
   });
 
   it('derives queue-priority query fields for tasks and task envelopes', () => {
-    expect(deriveQueryFields(createTask({ queue: { priority: 'urgent' } }))).toEqual({
+    expect(
+      deriveQueryFields(createTask({ queue: { lane: 'user_requested', priority: 'urgent' } })),
+    ).toEqual({
+      dueAtSortValue: '9999-12-31T23:59:59.999Z',
+      launchRequestedRank: 0,
+      queueLaneRank: 0,
       queuePriorityRank: 0,
     });
     expect(
-      deriveQueryFields(createTaskEnvelope({ queue: { priority: 'low' } })),
+      deriveQueryFields(createTaskEnvelope({ queue: { lane: 'scheduled', priority: 'low' } })),
     ).toEqual({
+      dueAtSortValue: '9999-12-31T23:59:59.999Z',
+      launchRequestedRank: 0,
+      queueLaneRank: 2,
       queuePriorityRank: 3,
     });
   });
 
   it('round-trips persisted documents back into strict contract records', () => {
     const task = createTask({
-      queue: { priority: 'high' },
+      queue: { lane: 'user_requested', priority: 'high' },
     });
 
     const persisted = toPersistedRecordDocument(task);
@@ -46,7 +54,7 @@ describe('persistence document mappers', () => {
 
   it('ignores Cosmos system metadata when parsing persisted documents', () => {
     const task = createTask({
-      queue: { priority: 'high' },
+      queue: { lane: 'user_requested', priority: 'high' },
     });
 
     const roundTripped = fromPersistedRecordDocument({
@@ -76,6 +84,9 @@ describe('persistence document mappers', () => {
       fromPersistedRecordDocument({
         ...persisted,
         query: {
+          dueAtSortValue: '2026-04-12T00:00:00.000Z',
+          launchRequestedRank: 0,
+          queueLaneRank: 0,
           queuePriorityRank: 0,
         },
       }),

@@ -84,6 +84,9 @@ export function transitionTaskState(
     state: nextState,
     stateEnteredAt: transitionedAt,
     updatedAt: transitionedAt,
+    completedAt: nextState === 'completed' ? transitionedAt : task.completedAt,
+    failedAt: nextState === 'failed' ? transitionedAt : task.failedAt,
+    cancelledAt: nextState === 'cancelled' ? transitionedAt : task.cancelledAt,
     currentHandsRunId: clearsHandsSlot(nextState) ? null : task.currentHandsRunId,
   };
 }

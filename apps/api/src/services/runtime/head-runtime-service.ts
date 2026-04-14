@@ -29,6 +29,7 @@ import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
 import type { RepositoryBundle } from '../../adapters/repositories/index.js';
 import { NotFoundError } from '../../http/errors.js';
 import { createHeadToolCatalog } from './head-tool-catalog.js';
+import type { TaskQueueService } from './task-queue-service.js';
 
 type TriggerLoadResult = {
   inReplyToInboundMessageId?: string;
@@ -372,6 +373,7 @@ export function createHeadRuntimeService(options: {
   logger: Logger;
   repositories: RepositoryBundle;
   repositoryConfig: RepositoryConfig;
+  taskQueueService: TaskQueueService;
 }): HeadService {
   return {
     async startTurn(input: HeadStartTurnRequest): Promise<HeadTurnExecutionResult> {
@@ -457,6 +459,7 @@ export function createHeadRuntimeService(options: {
         channel: storedChannel.value,
         headTurn: createdHeadTurn.value,
         repositoryConfig: options.repositoryConfig,
+        taskQueueService: options.taskQueueService,
         workingContext: activeContext.value,
       });
       const prompt = buildHeadPrompt({
@@ -510,18 +513,23 @@ export function createHeadRuntimeService(options: {
           },
           createdHeadTurn.etag,
         );
+        const latestWorkingContext = await options.repositories.workingContexts.get(
+          storedAgent.value.id,
+          activeContext.value.id,
+        );
         await options.repositories.workingContexts.replace(
           {
-            ...activeContext.value,
+            ...(latestWorkingContext?.value ?? activeContext.value),
             activeHeadTurnId: null,
             conversationCursor: runtimeResult.conversationCursor ?? undefined,
             lastTrustedMessageSequence:
               input.trigger.kind === 'trusted_messages'
                 ? input.trigger.readThroughMessageSequence
-                : activeContext.value.lastTrustedMessageSequence,
+                : (latestWorkingContext?.value.lastTrustedMessageSequence ??
+                  activeContext.value.lastTrustedMessageSequence),
             updatedAt: completedAt,
           },
-          activeContext.etag,
+          latestWorkingContext?.etag ?? activeContext.etag,
         );
 
         return headTurnExecutionResultSchema.parse({
@@ -550,13 +558,17 @@ export function createHeadRuntimeService(options: {
           },
           createdHeadTurn.etag,
         );
+        const latestWorkingContext = await options.repositories.workingContexts.get(
+          storedAgent.value.id,
+          activeContext.value.id,
+        );
         await options.repositories.workingContexts.replace(
           {
-            ...activeContext.value,
+            ...(latestWorkingContext?.value ?? activeContext.value),
             activeHeadTurnId: null,
             updatedAt: failedAt,
           },
-          activeContext.etag,
+          latestWorkingContext?.etag ?? activeContext.etag,
         );
 
         return headTurnExecutionResultSchema.parse({

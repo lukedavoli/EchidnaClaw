@@ -27,9 +27,14 @@ import {
   createTelegramChannelUpdateKey,
   createSandboxSessionIdempotencyKey,
   createScheduleOccurrenceKey,
+  createTaskMergeKey,
+  createTaskStartRequestIdempotencyKey,
   createTaskCreationIdempotencyKey,
   decodeTelegramCallbackData,
   encodeTelegramCallbackData,
+  getQueueLaneRank,
+  markTaskLaunchFailed,
+  markTaskLaunchRequested,
   recordAgentProvisioningFailure,
   resetAgentProvisioningForRetry,
   restoreAgent,
@@ -262,16 +267,25 @@ describe('domain invariants and helpers', () => {
         schemaVersion: 1,
         createdAt: timestamp,
         updatedAt: timestamp,
-        correlation,
-        agentId: 'agt_domain',
-        state: 'running',
-        inboundMessageIds: ['inm_domain'],
-        readThroughMessageSequence: 1,
-        startedAt: timestamp,
-        completedAt: null,
-        supersededBySequence: null,
-        responseMessageId: null,
-      }),
+      correlation,
+      agentId: 'agt_domain',
+      workingContextId: 'ctx_domain',
+      state: 'running',
+      triggerKind: 'trusted_messages',
+      inboundMessageIds: ['inm_domain'],
+      readThroughMessageSequence: 1,
+      taskId: null,
+      scheduleId: null,
+      dueAt: null,
+      startedAt: timestamp,
+      completedAt: null,
+      supersededBySequence: null,
+      providerConversationId: null,
+      providerRunId: null,
+      promptProfileVersion: 'head-base-v1',
+      completionKind: null,
+      responseMessageId: null,
+    }),
     ];
 
     const handsRuns = [
@@ -340,8 +354,87 @@ describe('domain invariants and helpers', () => {
   it('builds deterministic idempotency keys', () => {
     expect(createInboundMessageIdempotencyKey('agt_domain', 'tg-123')).toContain('idem_');
     expect(createTaskCreationIdempotencyKey('agt_domain', 'Check deployment', null)).toContain('idem_');
+    expect(
+      createTaskMergeKey({
+        agentId: 'agt_domain',
+        requestedOutcome: 'Check deployment',
+        requestedByKind: 'user',
+        taskType: 'follow_up',
+      }),
+    ).toContain('merge_');
+    expect(createTaskStartRequestIdempotencyKey('tsk_domain', 'env_domain', 2)).toContain('idem_');
     expect(createSandboxSessionIdempotencyKey('hnd_domain', 'standard')).toContain('idem_');
     expect(createScheduleOccurrenceKey('sch_domain', timestamp)).toContain('occ_');
+  });
+
+  it('orders queue lanes and tracks launch retries for deferred work', () => {
+    expect(getQueueLaneRank('user_requested')).toBeLessThan(getQueueLaneRank('scheduled'));
+
+    const deferredTask = taskSchema.parse({
+      id: 'tsk_launch-domain',
+      recordType: 'task',
+      schemaVersion: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      correlation,
+      agentId: 'agt_domain',
+      type: 'follow_up',
+      state: 'deferred',
+      queue: {
+        lane: 'follow_up',
+        priority: 'normal',
+      },
+      requestedOutcome: 'Resume the deferred deployment check',
+      requestedBy: {
+        kind: 'system',
+      },
+      dueAt: null,
+      stateEnteredAt: timestamp,
+      scheduleId: undefined,
+      activeTaskEnvelopeId: 'env_domain',
+      currentRunJournalId: 'rjn_domain',
+      currentHandsRunId: null,
+      activeApprovalId: null,
+      mergeKey: 'merge_domain',
+      mergedIntoTaskId: null,
+      attemptCount: 2,
+      launchState: {
+        status: 'failed',
+        requestedAt: '2026-04-12T00:10:00.000Z',
+        lastAttemptAt: '2026-04-12T00:10:00.000Z',
+        lastIdempotencyKey: 'idem_launch-domain',
+        attemptCount: 1,
+        lastErrorCode: 'hands_start_request_failed',
+        lastErrorMessage: 'Previous start request failed.',
+      },
+      progressSummary: null,
+      lastProgressAt: null,
+      completedAt: null,
+      failedAt: null,
+      cancelledAt: null,
+      artifactIds: [],
+      externalReferences: [],
+      notes: '',
+    });
+
+    const requeued = transitionTaskState(deferredTask, 'queued', '2026-04-12T00:20:00.000Z');
+    const requested = markTaskLaunchRequested(
+      requeued,
+      '2026-04-12T00:21:00.000Z',
+      'idem_launch-retry',
+    );
+    const failed = markTaskLaunchFailed(
+      requested,
+      '2026-04-12T00:21:30.000Z',
+      'hands_start_request_failed',
+      'Hands startup is still unavailable.',
+    );
+
+    expect(requeued.state).toBe('queued');
+    expect(requested.launchState.status).toBe('requested');
+    expect(requested.launchState.attemptCount).toBe(2);
+    expect(failed.launchState.status).toBe('failed');
+    expect(failed.launchState.lastErrorCode).toBe('hands_start_request_failed');
   });
 
   it('builds deterministic Telegram message identifiers and callback payloads', () => {

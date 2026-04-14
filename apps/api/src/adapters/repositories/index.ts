@@ -7,6 +7,7 @@ import {
   type ChannelRepository,
   type CredentialRepository,
   type ExecutionRepository,
+  type IdempotencyRepository,
   type MessageRepository,
   type RunJournalRepository,
   type ScheduleRepository,
@@ -29,6 +30,7 @@ export interface RepositoryBundle {
   channels: ChannelRepository;
   credentials: CredentialRepository;
   execution: ExecutionRepository;
+  idempotency: IdempotencyRepository;
   messages: MessageRepository;
   runJournals: RunJournalRepository;
   schedules: ScheduleRepository;
@@ -89,6 +91,7 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
       channels: suite.channels,
       credentials: suite.credentials,
       execution: suite.execution,
+      idempotency: suite.idempotency,
       messages: suite.messages,
       runJournals: suite.runJournals,
       schedules: suite.schedules,

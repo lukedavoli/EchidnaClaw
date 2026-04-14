@@ -1,4 +1,4 @@
-import { type AgentId, type HandsRunId, type ScheduleId } from '@echidna-claw/contracts';
+import { type AgentId, type ExternalReference, type HandsRunId, type ScheduleId } from '@echidna-claw/contracts';
 
 function normalizePart(value: string): string {
   return value
@@ -22,8 +22,33 @@ export function createTaskCreationIdempotencyKey(
   agentId: AgentId,
   requestedOutcome: string,
   dueAt?: string | null,
+  taskType = 'task',
+  sourceId = 'direct',
 ): string {
-  return createKey('idem', [agentId, requestedOutcome, dueAt ?? 'immediate']);
+  return createKey('idem', [agentId, taskType, sourceId, requestedOutcome, dueAt ?? 'immediate']);
+}
+
+export function createTaskMergeKey(input: {
+  agentId: AgentId;
+  dueAt?: string | null;
+  externalReferences?: readonly ExternalReference[];
+  requestedByKind: 'user' | 'schedule' | 'system';
+  requestedOutcome: string;
+  taskType: string;
+}): string {
+  const primaryReferences = (input.externalReferences ?? [])
+    .map((reference) => `${reference.type}:${reference.reference}`)
+    .sort()
+    .slice(0, 3);
+
+  return createKey('merge', [
+    input.agentId,
+    input.taskType,
+    input.requestedByKind,
+    input.requestedOutcome,
+    input.dueAt ?? 'immediate',
+    ...primaryReferences,
+  ]);
 }
 
 export function createApprovalIdempotencyKey(taskId: string, approvalSummary: string): string {
@@ -32,6 +57,14 @@ export function createApprovalIdempotencyKey(taskId: string, approvalSummary: st
 
 export function createSandboxSessionIdempotencyKey(handsRunId: HandsRunId, policyName: string): string {
   return createKey('idem', [handsRunId, policyName]);
+}
+
+export function createTaskStartRequestIdempotencyKey(
+  taskId: string,
+  taskEnvelopeId: string,
+  attemptNumber: number,
+): string {
+  return createKey('idem', [taskId, taskEnvelopeId, `attempt-${attemptNumber}`]);
 }
 
 export function createScheduleOccurrenceKey(scheduleId: ScheduleId, occurrenceAt: string): string {

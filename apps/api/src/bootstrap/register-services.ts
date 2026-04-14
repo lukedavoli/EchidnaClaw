@@ -14,6 +14,7 @@ import { createHandsRuntimeService } from '../services/runtime/hands-runtime-ser
 import { createHeadRuntimeService } from '../services/runtime/head-runtime-service.js';
 import { createSandboxRuntimeService } from '../services/runtime/sandbox-runtime-service.js';
 import { createSchedulerRuntimeService } from '../services/runtime/scheduler-runtime-service.js';
+import { createTaskQueueService } from '../services/runtime/task-queue-service.js';
 import type { ApiDependencies } from './app-types.js';
 
 export function registerServices(options: {
@@ -33,6 +34,11 @@ export function registerServices(options: {
   });
   const trustedChannelIngressDispatcher = createTrustedChannelIngressDispatcher({
     logger: options.loggerFactory.createLogger({ service: 'trusted_channel_ingress' }),
+  });
+  const taskQueueService = createTaskQueueService({
+    handsJobs: adapters.adapters.handsJobs,
+    logger: options.loggerFactory.createLogger({ service: 'task_queue' }),
+    repositories: adapters.adapters.repositories,
   });
 
   return {
@@ -59,6 +65,7 @@ export function registerServices(options: {
         logger: options.loggerFactory.createLogger({ service: 'head_runtime' }),
         repositories: adapters.adapters.repositories,
         repositoryConfig,
+        taskQueueService,
       }),
       sandboxRuntimeService: createSandboxRuntimeService({
         logger: options.loggerFactory.createLogger({ service: 'sandbox_runtime' }),
@@ -68,6 +75,7 @@ export function registerServices(options: {
         logger: options.loggerFactory.createLogger({ service: 'scheduler_runtime' }),
         schedulerRuntime: adapters.adapters.schedulerRuntime,
       }),
+      taskQueueService,
       telegramIngressService: createTelegramIngressService({
         approvalCallbackService,
         logger: options.loggerFactory.createLogger({ service: 'telegram_ingress' }),

@@ -1,6 +1,10 @@
+import { getDueAtSortValue, getQueueLaneRank } from '@echidna-claw/domain';
 import { type PlatformRecord, type QueueDescriptor } from '@echidna-claw/contracts';
 
 export interface PersistedQueryFields {
+  dueAtSortValue?: string;
+  launchRequestedRank?: number;
+  queueLaneRank?: number;
   queuePriorityRank?: number;
 }
 
@@ -20,11 +24,24 @@ export function getQueuePriorityRank(queue: QueueDescriptor): number {
   return rank;
 }
 
+export function getLaunchRequestedRank(status: 'not_requested' | 'requested' | 'failed'): number {
+  return status === 'not_requested' ? 0 : 1;
+}
+
 export function deriveQueryFields(record: PlatformRecord): PersistedQueryFields | undefined {
   switch (record.recordType) {
     case 'task':
+      return {
+        dueAtSortValue: getDueAtSortValue(record.dueAt),
+        launchRequestedRank: getLaunchRequestedRank(record.launchState.status),
+        queueLaneRank: getQueueLaneRank(record.queue.lane),
+        queuePriorityRank: getQueuePriorityRank(record.queue),
+      };
     case 'task_envelope':
       return {
+        dueAtSortValue: getDueAtSortValue(record.dueAt),
+        launchRequestedRank: record.dispatchIdempotencyKey == null ? 0 : 1,
+        queueLaneRank: getQueueLaneRank(record.queue.lane),
         queuePriorityRank: getQueuePriorityRank(record.queue),
       };
     default:

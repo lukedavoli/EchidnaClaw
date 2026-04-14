@@ -41,7 +41,7 @@ export const artifactLinkSchema = z
   })
   .strict();
 
-const externalReferenceSchema = z
+export const externalReferenceSchema = z
   .object({
     type: z.enum(['artifact', 'url', 'credential', 'channel_message']),
     reference: nonEmptyStringSchema,
@@ -75,7 +75,7 @@ export const outboundMessageActionSchema = z
   })
   .strict();
 
-const requestedBySchema = z
+export const requestedBySchema = z
   .object({
     kind: z.enum(['user', 'schedule', 'system']),
     sourceMessageId: inboundMessageIdSchema.optional(),
@@ -94,10 +94,48 @@ const recurrenceSchema = z
   })
   .strict();
 
-const queueDescriptorSchema = z
+export const queueLaneSchema = z.enum([
+  'user_requested',
+  'follow_up',
+  'scheduled',
+  'system',
+]);
+
+export const queuePrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
+
+export const queueDescriptorSchema = z
   .object({
-    priority: z.enum(['low', 'normal', 'high', 'urgent']),
+    lane: queueLaneSchema.default('user_requested'),
+    priority: queuePrioritySchema,
     sequence: positiveIntegerSchema.optional(),
+  })
+  .strict();
+
+export const progressActorSchema = z.enum(['head', 'hands', 'scheduler', 'system']);
+
+export const taskProgressSummarySchema = z
+  .object({
+    headline: nonEmptyStringSchema,
+    detail: z.string().trim().optional(),
+    percentComplete: z.number().min(0).max(100).optional(),
+    waitingForUser: z.boolean(),
+    lastActor: progressActorSchema,
+  })
+  .strict();
+
+export const taskProgressSummaryPatchSchema = taskProgressSummarySchema.partial();
+
+export const taskLaunchStatusSchema = z.enum(['not_requested', 'requested', 'failed']);
+
+export const taskLaunchStateSchema = z
+  .object({
+    status: taskLaunchStatusSchema.default('not_requested'),
+    requestedAt: isoDateTimeSchema.nullable().default(null),
+    lastAttemptAt: isoDateTimeSchema.nullable().default(null),
+    lastIdempotencyKey: nonEmptyStringSchema.nullable().default(null),
+    attemptCount: z.number().int().nonnegative().default(0),
+    lastErrorCode: nonEmptyStringSchema.optional(),
+    lastErrorMessage: z.string().trim().optional(),
   })
   .strict();
 
@@ -109,9 +147,17 @@ const tokenUsageSchema = z
   .strict();
 
 const usageSourceSchema = z.enum(['head', 'hands', 'sandbox', 'scheduler', 'web_control_plane']);
-const journalStatusSchema = z.enum(['open', 'closed', 'failed']);
+export const journalStatusSchema = z.enum(['open', 'closed', 'failed']);
 const credentialStatusSchema = z.enum(['active', 'revoked']);
 const idempotencyStatusSchema = z.enum(['reserved', 'completed', 'expired']);
+export const runJournalEntryKindSchema = z.enum([
+  'status',
+  'progress',
+  'action',
+  'waiting',
+  'completion',
+  'failure',
+]);
 
 export const taskStateSchema = z.enum([
   'queued',
@@ -270,8 +316,25 @@ export const taskSchema = createRecordSchema('task', taskIdSchema, {
   dueAt: isoDateTimeSchema.nullable(),
   stateEnteredAt: isoDateTimeSchema,
   scheduleId: scheduleIdSchema.optional(),
+  activeTaskEnvelopeId: taskEnvelopeIdSchema.nullable().default(null),
+  currentRunJournalId: runJournalIdSchema.nullable().default(null),
   currentHandsRunId: handsRunIdSchema.nullable(),
   activeApprovalId: approvalIdSchema.nullable(),
+  mergeKey: nonEmptyStringSchema.nullable().default(null),
+  mergedIntoTaskId: taskIdSchema.nullable().default(null),
+  attemptCount: z.number().int().positive().default(1),
+  launchState: taskLaunchStateSchema.default({
+    status: 'not_requested',
+    requestedAt: null,
+    lastAttemptAt: null,
+    lastIdempotencyKey: null,
+    attemptCount: 0,
+  }),
+  progressSummary: taskProgressSummarySchema.nullable().default(null),
+  lastProgressAt: isoDateTimeSchema.nullable().default(null),
+  completedAt: isoDateTimeSchema.nullable().default(null),
+  failedAt: isoDateTimeSchema.nullable().default(null),
+  cancelledAt: isoDateTimeSchema.nullable().default(null),
   artifactIds: z.array(artifactIdSchema).default([]),
   externalReferences: z.array(externalReferenceSchema).default([]),
   notes: z.string().trim().default(''),
@@ -282,8 +345,15 @@ export const taskEnvelopeSchema = createRecordSchema('task_envelope', taskEnvelo
   agentId: agentIdSchema,
   taskType: nonEmptyStringSchema,
   requestedOutcome: nonEmptyStringSchema,
+  requestedBy: requestedBySchema,
   queue: queueDescriptorSchema,
   dueAt: isoDateTimeSchema.nullable(),
+  sourceHeadTurnId: headTurnIdSchema.nullable().default(null),
+  workingContextSummary: z.string().trim().default(''),
+  mergeKey: nonEmptyStringSchema.nullable().default(null),
+  attemptNumber: positiveIntegerSchema.default(1),
+  supersedesEnvelopeId: taskEnvelopeIdSchema.nullable().default(null),
+  dispatchIdempotencyKey: nonEmptyStringSchema.nullable().default(null),
   approvalState: approvalStateSchema.optional(),
   artifactIds: z.array(artifactIdSchema).default([]),
   credentialIds: z.array(credentialIdSchema).default([]),
@@ -380,18 +450,28 @@ export const runJournalSchema = createRecordSchema('run_journal', runJournalIdSc
   agentId: agentIdSchema,
   scope: z.enum(['head_turn', 'hands_run', 'scheduler']),
   scopeId: nonEmptyStringSchema,
+  taskId: taskIdSchema.nullable().default(null),
+  handsRunId: handsRunIdSchema.nullable().default(null),
   status: journalStatusSchema,
   openedAt: isoDateTimeSchema,
   closedAt: isoDateTimeSchema.nullable(),
   summary: z.string().trim().default(''),
+  progressSummary: taskProgressSummarySchema.nullable().default(null),
+  lastEntryAt: isoDateTimeSchema.nullable().default(null),
+  resultCode: nonEmptyStringSchema.nullable().default(null),
 });
 
 export const runJournalEntrySchema = createRecordSchema('run_journal_entry', runJournalEntryIdSchema, {
   journalId: runJournalIdSchema,
   agentId: agentIdSchema,
+  entryKind: runJournalEntryKindSchema,
   level: z.enum(['info', 'warn', 'error']),
   recordedAt: isoDateTimeSchema,
   message: nonEmptyStringSchema,
+  taskStateAfter: taskStateSchema.nullable().default(null),
+  progressSummaryPatch: taskProgressSummaryPatchSchema.nullable().default(null),
+  artifactIds: z.array(artifactIdSchema).default([]),
+  approvalId: approvalIdSchema.nullable().default(null),
   handsActionSummary: z.string().trim().optional(),
 });
 
@@ -446,13 +526,21 @@ export type InboundMessageKind = z.infer<typeof inboundMessageKindSchema>;
 export type TelegramMessageSender = z.infer<typeof telegramMessageSenderSchema>;
 export type OutboundMessageAction = z.infer<typeof outboundMessageActionSchema>;
 export type RequestedBy = z.infer<typeof requestedBySchema>;
+export type QueueLane = z.infer<typeof queueLaneSchema>;
+export type QueuePriority = z.infer<typeof queuePrioritySchema>;
 export type NormalizedRecurrence = z.infer<typeof recurrenceSchema>;
 export type QueueDescriptor = z.infer<typeof queueDescriptorSchema>;
+export type ProgressActor = z.infer<typeof progressActorSchema>;
+export type TaskProgressSummary = z.infer<typeof taskProgressSummarySchema>;
+export type TaskProgressSummaryPatch = z.infer<typeof taskProgressSummaryPatchSchema>;
+export type TaskLaunchStatus = z.infer<typeof taskLaunchStatusSchema>;
+export type TaskLaunchState = z.infer<typeof taskLaunchStateSchema>;
 export type TokenUsage = z.infer<typeof tokenUsageSchema>;
 export type UsageSource = z.infer<typeof usageSourceSchema>;
 export type JournalStatus = z.infer<typeof journalStatusSchema>;
 export type CredentialStatus = z.infer<typeof credentialStatusSchema>;
 export type IdempotencyStatus = z.infer<typeof idempotencyStatusSchema>;
+export type RunJournalEntryKind = z.infer<typeof runJournalEntryKindSchema>;
 export type TaskState = z.infer<typeof taskStateSchema>;
 export type ApprovalState = z.infer<typeof approvalStateSchema>;
 export type AgentProvisioningState = z.infer<typeof agentProvisioningStateSchema>;
