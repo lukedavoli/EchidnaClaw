@@ -10,6 +10,7 @@ function createIdentifierSchema(prefix: string) {
 
 export const schemaVersionSchema = z.literal(1);
 export const isoDateTimeSchema = z.string().datetime({ offset: true });
+export const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const nonEmptyStringSchema = z.string().trim().min(1);
 export const timeZoneSchema = nonEmptyStringSchema;
 export const localTimeSchema = z.string().regex(/^\d{2}:\d{2}$/);
@@ -48,6 +49,7 @@ export const weekdaySchema = z.enum(['monday', 'tuesday', 'wednesday', 'thursday
 export const modelIdSchema = z.enum(['gpt-5.4-mini']);
 
 export type SchemaVersion = z.infer<typeof schemaVersionSchema>;
+export type LocalDate = z.infer<typeof localDateSchema>;
 export type AgentId = z.infer<typeof agentIdSchema>;
 export type ChannelId = z.infer<typeof channelIdSchema>;
 export type InboundMessageId = z.infer<typeof inboundMessageIdSchema>;

@@ -213,8 +213,12 @@ describe('contracts schemas', () => {
       taskId: null,
       scheduleId: null,
       dueAt: null,
+      claimedAt: timestamp,
       startedAt: timestamp,
       completedAt: null,
+      staleCheckedAt: null,
+      episodeLocalDate: '2026-04-12',
+      episodeTurnIndex: 1,
       supersededBySequence: null,
       providerConversationId: 'conversation-step-2',
       providerRunId: 'run-step-2',
@@ -367,7 +371,6 @@ describe('contracts schemas', () => {
   it('parses trigger-aware head start requests and execution results', () => {
     const request = headStartTurnRequestSchema.parse({
       agentId: 'agt_step-2',
-      workingContextId: 'ctx_step-2',
       trigger: {
         kind: 'trusted_messages',
         channelId: 'chn_step-2',
@@ -400,8 +403,12 @@ describe('contracts schemas', () => {
           taskId: null,
           scheduleId: null,
           dueAt: null,
+          claimedAt: timestamp,
           startedAt: timestamp,
           completedAt: timestamp,
+          staleCheckedAt: timestamp,
+          episodeLocalDate: '2026-04-12',
+          episodeTurnIndex: 1,
           supersededBySequence: null,
           providerConversationId: 'conversation-step-2',
           providerRunId: 'run-step-2',
@@ -433,6 +440,54 @@ describe('contracts schemas', () => {
           text: 'The deployment looks healthy.',
         },
       },
+    });
+
+    expect(
+      headTurnExecutionResultSchema.parse({
+        headTurn: {
+          id: 'hdr_superseded',
+          recordType: 'head_turn',
+          schemaVersion: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          correlation: {
+            ...correlation,
+            headTurnId: 'hdr_superseded',
+          },
+          agentId: 'agt_step-2',
+          workingContextId: 'ctx_step-2',
+          state: 'superseded',
+          triggerKind: 'trusted_messages',
+          inboundMessageIds: ['inm_step-2'],
+          readThroughMessageSequence: 1,
+          taskId: null,
+          scheduleId: null,
+          dueAt: null,
+          claimedAt: timestamp,
+          startedAt: timestamp,
+          completedAt: timestamp,
+          staleCheckedAt: timestamp,
+          episodeLocalDate: '2026-04-12',
+          episodeTurnIndex: 1,
+          supersededBySequence: 2,
+          providerConversationId: 'conversation-step-2',
+          providerRunId: 'run-step-2',
+          promptProfileVersion: 'head-base-v1',
+          completionKind: null,
+          responseMessageId: null,
+        },
+        status: 'superseded',
+        replyDraft: null,
+        effectSummary: {
+          taskRequested: false,
+          scheduleChangeRequested: false,
+          approvalRequested: false,
+          sandboxRequested: false,
+          memoryOperationRequested: false,
+        },
+      }),
+    ).toMatchObject({
+      status: 'superseded',
     });
   });
 

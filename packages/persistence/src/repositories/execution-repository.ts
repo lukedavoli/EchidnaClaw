@@ -11,6 +11,8 @@ import {
   type SandboxSession,
   type SandboxSessionId,
   type Task,
+  type WorkingContext,
+  workingContextSchema,
 } from '@echidna-claw/contracts';
 
 import { type StoredRecord } from '../documents/envelope.js';
@@ -29,12 +31,34 @@ export interface HandsRunClaimResult {
   task: StoredRecord<Task>;
 }
 
+export interface HeadTurnClaimResult {
+  headTurn: StoredRecord<HeadTurn>;
+  workingContext: StoredRecord<WorkingContext>;
+}
+
 export interface ExecutionRepository {
   createHeadTurn(headTurn: HeadTurn): Promise<StoredRecord<HeadTurn>>;
   findHeadTurn(headTurnId: HeadTurnId): Promise<StoredRecord<HeadTurn> | null>;
   getHeadTurn(agentId: AgentId, headTurnId: HeadTurnId): Promise<StoredRecord<HeadTurn> | null>;
   listActiveHeadTurns(agentId: AgentId): Promise<StoredRecord<HeadTurn>[]>;
   replaceHeadTurn(headTurn: HeadTurn, expectedEtag: string): Promise<StoredRecord<HeadTurn>>;
+  claimHeadTurn(input: {
+    headTurn: HeadTurn;
+    workingContext: WorkingContext;
+    workingContextEtag: string;
+  }): Promise<HeadTurnClaimResult>;
+  finalizeHeadTurn(input: {
+    headTurn: HeadTurn;
+    headTurnEtag: string;
+    workingContext: WorkingContext;
+    workingContextEtag: string;
+  }): Promise<HeadTurnClaimResult>;
+  supersedeHeadTurn(input: {
+    headTurn: HeadTurn;
+    headTurnEtag: string;
+    workingContext?: WorkingContext;
+    workingContextEtag?: string;
+  }): Promise<HeadTurnClaimResult | { headTurn: StoredRecord<HeadTurn>; workingContext: null }>;
   createHandsRun(handsRun: HandsRun): Promise<StoredRecord<HandsRun>>;
   getHandsRun(agentId: AgentId, handsRunId: HandsRunId): Promise<StoredRecord<HandsRun> | null>;
   listActiveHandsRuns(agentId: AgentId): Promise<StoredRecord<HandsRun>[]>;
@@ -98,6 +122,103 @@ export class DefaultExecutionRepository implements ExecutionRepository {
 
   async replaceHeadTurn(headTurn: HeadTurn, expectedEtag: string): Promise<StoredRecord<HeadTurn>> {
     return this.store.replace(headTurnSchema.parse(headTurn), expectedEtag);
+  }
+
+  async claimHeadTurn(input: {
+    headTurn: HeadTurn;
+    workingContext: WorkingContext;
+    workingContextEtag: string;
+  }): Promise<HeadTurnClaimResult> {
+    const headTurn = headTurnSchema.parse(input.headTurn);
+    const workingContext = workingContextSchema.parse(input.workingContext);
+    assertSameAgent(headTurn.agentId, [headTurn, workingContext]);
+
+    const [storedWorkingContext, storedHeadTurn] = await this.store.batch(headTurn.agentId, [
+      {
+        kind: 'replace',
+        record: workingContext,
+        expectedEtag: input.workingContextEtag,
+      },
+      {
+        kind: 'create',
+        record: headTurn,
+      },
+    ]);
+
+    return {
+      headTurn: storedHeadTurn as StoredRecord<HeadTurn>,
+      workingContext: storedWorkingContext as StoredRecord<WorkingContext>,
+    };
+  }
+
+  async finalizeHeadTurn(input: {
+    headTurn: HeadTurn;
+    headTurnEtag: string;
+    workingContext: WorkingContext;
+    workingContextEtag: string;
+  }): Promise<HeadTurnClaimResult> {
+    const headTurn = headTurnSchema.parse(input.headTurn);
+    const workingContext = workingContextSchema.parse(input.workingContext);
+    assertSameAgent(headTurn.agentId, [headTurn, workingContext]);
+
+    const [storedWorkingContext, storedHeadTurn] = await this.store.batch(headTurn.agentId, [
+      {
+        kind: 'replace',
+        record: workingContext,
+        expectedEtag: input.workingContextEtag,
+      },
+      {
+        kind: 'replace',
+        record: headTurn,
+        expectedEtag: input.headTurnEtag,
+      },
+    ]);
+
+    return {
+      headTurn: storedHeadTurn as StoredRecord<HeadTurn>,
+      workingContext: storedWorkingContext as StoredRecord<WorkingContext>,
+    };
+  }
+
+  async supersedeHeadTurn(input: {
+    headTurn: HeadTurn;
+    headTurnEtag: string;
+    workingContext?: WorkingContext;
+    workingContextEtag?: string;
+  }): Promise<HeadTurnClaimResult | { headTurn: StoredRecord<HeadTurn>; workingContext: null }> {
+    const headTurn = headTurnSchema.parse(input.headTurn);
+
+    if (input.workingContext == null) {
+      return {
+        headTurn: await this.store.replace(headTurn, input.headTurnEtag),
+        workingContext: null,
+      };
+    }
+
+    if (input.workingContextEtag == null) {
+      throw new Error('workingContextEtag is required when superseding a working context.');
+    }
+
+    const workingContext = workingContextSchema.parse(input.workingContext);
+    assertSameAgent(headTurn.agentId, [headTurn, workingContext]);
+
+    const [storedWorkingContext, storedHeadTurn] = await this.store.batch(headTurn.agentId, [
+      {
+        kind: 'replace',
+        record: workingContext,
+        expectedEtag: input.workingContextEtag,
+      },
+      {
+        kind: 'replace',
+        record: headTurn,
+        expectedEtag: input.headTurnEtag,
+      },
+    ]);
+
+    return {
+      headTurn: storedHeadTurn as StoredRecord<HeadTurn>,
+      workingContext: storedWorkingContext as StoredRecord<WorkingContext>,
+    };
   }
 
   async createHandsRun(handsRun: HandsRun): Promise<StoredRecord<HandsRun>> {

@@ -30,9 +30,12 @@ import {
   createTaskCreationIdempotencyKey,
   decodeTelegramCallbackData,
   encodeTelegramCallbackData,
+  getLocalCalendarDate,
   recordAgentProvisioningFailure,
   resetAgentProvisioningForRetry,
   restoreAgent,
+  shouldRotateEpisode,
+  shouldSupersedeTurn,
   softDeleteAgent,
   transitionAgentProvisioningState,
   transitionApprovalState,
@@ -262,17 +265,30 @@ describe('domain invariants and helpers', () => {
         schemaVersion: 1,
         createdAt: timestamp,
         updatedAt: timestamp,
-        correlation,
-        agentId: 'agt_domain',
-        state: 'running',
-        inboundMessageIds: ['inm_domain'],
-        readThroughMessageSequence: 1,
-        startedAt: timestamp,
-        completedAt: null,
-        supersededBySequence: null,
-        responseMessageId: null,
-      }),
-    ];
+      correlation,
+      agentId: 'agt_domain',
+      workingContextId: 'ctx_domain',
+      state: 'running',
+      triggerKind: 'trusted_messages',
+      inboundMessageIds: ['inm_domain'],
+      readThroughMessageSequence: 1,
+      taskId: null,
+      scheduleId: null,
+      dueAt: null,
+      claimedAt: timestamp,
+      startedAt: timestamp,
+      completedAt: null,
+      staleCheckedAt: null,
+      episodeLocalDate: '2026-04-12',
+      episodeTurnIndex: 1,
+      supersededBySequence: null,
+      providerConversationId: 'conversation-domain',
+      providerRunId: 'run-domain',
+      promptProfileVersion: 'head-base-v1',
+      completionKind: null,
+      responseMessageId: null,
+    }),
+  ];
 
     const handsRuns = [
       handsRunSchema.parse({
@@ -335,6 +351,61 @@ describe('domain invariants and helpers', () => {
 
     expect(calculateNextDueAt(schedule, timestamp)).toBe('2026-04-13T00:00:00.000Z');
     expect(calculateNextDueAt({ ...schedule, state: 'paused' }, timestamp)).toBeNull();
+  });
+
+  it('calculates local dates and episode rotation boundaries', () => {
+    expect(
+      getLocalCalendarDate({
+        at: '2026-04-12T13:30:00.000Z',
+        timeZone: 'Australia/Sydney',
+      }),
+    ).toBe('2026-04-12');
+    expect(
+      getLocalCalendarDate({
+        at: '2026-04-12T23:30:00.000Z',
+        timeZone: 'UTC',
+      }),
+    ).toBe('2026-04-12');
+
+    expect(
+      shouldRotateEpisode({
+        episodeLocalDate: '2026-04-11',
+        episodeTurnCount: 1,
+        eventAt: '2026-04-12T01:00:00.000Z',
+        timeZone: 'Australia/Sydney',
+      }),
+    ).toBe(true);
+    expect(
+      shouldRotateEpisode({
+        episodeLocalDate: '2026-04-12',
+        episodeTurnCount: 20,
+        eventAt: '2026-04-12T01:00:00.000Z',
+        timeZone: 'Australia/Sydney',
+      }),
+    ).toBe(true);
+    expect(
+      shouldRotateEpisode({
+        episodeLocalDate: '2026-04-12',
+        episodeTurnCount: 3,
+        eventAt: '2026-04-12T01:00:00.000Z',
+        timeZone: 'Australia/Sydney',
+      }),
+    ).toBe(false);
+  });
+
+  it('marks older read-through claims as superseded when newer inbound arrives', () => {
+    expect(
+      shouldSupersedeTurn({
+        activeReadThroughSequence: 2,
+        latestInboundSequence: 3,
+      }),
+    ).toBe(true);
+    expect(
+      shouldSupersedeTurn({
+        activeReadThroughSequence: 3,
+        latestInboundSequence: 3,
+      }),
+    ).toBe(false);
   });
 
   it('builds deterministic idempotency keys', () => {

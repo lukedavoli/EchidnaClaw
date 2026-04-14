@@ -5,6 +5,7 @@ import {
   outboundMessageSchema,
   type AgentId,
   type Channel,
+  type ChannelId,
   type InboundMessage,
   type InboundMessageId,
   type IdempotencyRecord,
@@ -14,7 +15,7 @@ import {
 import { z } from 'zod';
 
 import { type StoredRecord } from '../documents/envelope.js';
-import { getRequiredRecord, eq, inList, operationalContainerName } from './common.js';
+import { getRequiredRecord, eq, gte, inList, lte, operationalContainerName } from './common.js';
 import { DuplicateRecordError } from './errors.js';
 import { type PersistedRecordStore } from './store.js';
 
@@ -52,6 +53,12 @@ export interface MessageRepository {
     agentId: AgentId,
     outboundMessageId: OutboundMessageId,
   ): Promise<StoredRecord<OutboundMessage> | null>;
+  listTrustedInboundMessagesBySequenceRange(input: {
+    agentId: AgentId;
+    channelId: ChannelId;
+    fromSequence: number;
+    throughSequence: number;
+  }): Promise<StoredRecord<InboundMessage>[]>;
   listRecentMessages(
     agentId: AgentId,
     limit?: number,
@@ -193,6 +200,31 @@ export class DefaultMessageRepository implements MessageRepository {
     outboundMessageId: OutboundMessageId,
   ): Promise<StoredRecord<OutboundMessage> | null> {
     return this.store.get(outboundMessageId, agentId, outboundMessageSchema);
+  }
+
+  async listTrustedInboundMessagesBySequenceRange(input: {
+    agentId: AgentId;
+    channelId: ChannelId;
+    fromSequence: number;
+    throughSequence: number;
+  }): Promise<StoredRecord<InboundMessage>[]> {
+    if (input.fromSequence > input.throughSequence) {
+      return [];
+    }
+
+    return this.store.query({
+      containerName: operationalContainerName,
+      partitionKey: input.agentId,
+      schema: inboundMessageSchema,
+      where: [
+        eq('recordType', 'inbound_message'),
+        eq('channelId', input.channelId),
+        eq('trusted', true),
+        gte('sequence', input.fromSequence),
+        lte('sequence', input.throughSequence),
+      ],
+      orderBy: [{ field: 'sequence', direction: 'asc' }],
+    });
   }
 
   async listRecentMessages(

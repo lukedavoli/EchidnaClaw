@@ -20,7 +20,7 @@ export interface PreparedHeadTurnInput {
   correlation: CorrelationMetadata;
   enabledTools: PreparedHeadTool[];
   headTurnId: string;
-  model: string;
+  model?: string;
   modelInput: Array<{
     role: 'developer' | 'system' | 'user';
     text: string;
@@ -45,4 +45,34 @@ export interface CancelFoundryTurnInput {
 export interface HeadRuntimeAdapter {
   executeTurn(input: PreparedHeadTurnInput): Promise<FoundryHeadTurnResult>;
   cancelTurn(input: CancelFoundryTurnInput): Promise<void>;
+}
+
+export interface WorkingContextSummaryInput {
+  agentId: string;
+  agentName: string;
+  assistantReplyText: string | null;
+  currentObjective: string | null;
+  latestHandsStatus: string | null;
+  openQuestions: string[];
+  openTaskIds: string[];
+  pendingApprovalIds: string[];
+  previousSummary: string;
+  timeZone: string;
+  triggerKind: 'trusted_messages' | 'due_task';
+  trustedMessages: Array<{
+    id: string;
+    sequence: number;
+    text: string;
+  }>;
+}
+
+export interface WorkingContextSummaryResult {
+  currentObjective: string | null;
+  latestHandsStatus: string | null;
+  openQuestions: string[];
+  summary: string;
+}
+
+export interface WorkingContextSummarizerAdapter {
+  summarize(input: WorkingContextSummaryInput): Promise<WorkingContextSummaryResult>;
 }

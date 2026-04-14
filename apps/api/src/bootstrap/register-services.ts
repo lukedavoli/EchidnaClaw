@@ -14,6 +14,7 @@ import { createHandsRuntimeService } from '../services/runtime/hands-runtime-ser
 import { createHeadRuntimeService } from '../services/runtime/head-runtime-service.js';
 import { createSandboxRuntimeService } from '../services/runtime/sandbox-runtime-service.js';
 import { createSchedulerRuntimeService } from '../services/runtime/scheduler-runtime-service.js';
+import { createWorkingContextSummaryService } from '../services/runtime/working-context-summary-service.js';
 import type { ApiDependencies } from './app-types.js';
 
 export function registerServices(options: {
@@ -31,8 +32,24 @@ export function registerServices(options: {
     repositories: adapters.adapters.repositories,
     telegramBotApi: adapters.adapters.telegramBotApi,
   });
+  const workingContextSummaryService = createWorkingContextSummaryService({
+    logger: options.loggerFactory.createLogger({ service: 'working_context_summary' }),
+    summarizer: adapters.adapters.foundry.workingContextSummarizer,
+  });
+  const headRuntimeService = createHeadRuntimeService({
+    config: options.config,
+    headRuntime: adapters.adapters.foundry.headRuntime,
+    logger: options.loggerFactory.createLogger({ service: 'head_runtime' }),
+    repositories: adapters.adapters.repositories,
+    repositoryConfig,
+    workingContextSummaryService,
+  });
   const trustedChannelIngressDispatcher = createTrustedChannelIngressDispatcher({
+    config: options.config,
+    headRuntimeService,
     logger: options.loggerFactory.createLogger({ service: 'trusted_channel_ingress' }),
+    outboundMessagingService,
+    repositories: adapters.adapters.repositories,
   });
 
   return {
@@ -53,13 +70,7 @@ export function registerServices(options: {
         logger: options.loggerFactory.createLogger({ service: 'hands_runtime' }),
       }),
       outboundMessagingService,
-      headRuntimeService: createHeadRuntimeService({
-        config: options.config,
-        headRuntime: adapters.adapters.foundry.headRuntime,
-        logger: options.loggerFactory.createLogger({ service: 'head_runtime' }),
-        repositories: adapters.adapters.repositories,
-        repositoryConfig,
-      }),
+      headRuntimeService,
       sandboxRuntimeService: createSandboxRuntimeService({
         logger: options.loggerFactory.createLogger({ service: 'sandbox_runtime' }),
         sandboxRuntime: adapters.adapters.sandboxRuntime,

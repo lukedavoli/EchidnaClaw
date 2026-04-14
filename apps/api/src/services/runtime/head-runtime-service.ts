@@ -15,20 +15,39 @@ import type {
   WorkingContext,
 } from '@echidna-claw/contracts';
 import { headTurnExecutionResultSchema } from '@echidna-claw/contracts';
-import { isAgentOperational } from '@echidna-claw/domain';
+import {
+  applyEpisodeRotation,
+  applyHeadTurnClaim,
+  applyHeadTurnCommitted,
+  applyHeadTurnSuperseded,
+  clearHeadTurnClaim,
+  isAgentOperational,
+  shouldRotateEpisode,
+  shouldSupersedeTurn,
+} from '@echidna-claw/domain';
 import type { Logger } from '@echidna-claw/observability';
 import {
   HEAD_BASE_PROMPT_PROFILE_VERSION,
   buildCapabilitySummary,
   buildHeadPrompt,
 } from '@echidna-claw/prompting';
-import type { StoredRecord } from '@echidna-claw/persistence';
+import {
+  DuplicateRecordError,
+  OptimisticConcurrencyError,
+  type StoredRecord,
+} from '@echidna-claw/persistence';
 
 import type { HeadRuntimeAdapter } from '../../adapters/foundry/index.js';
 import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
 import type { RepositoryBundle } from '../../adapters/repositories/index.js';
-import { NotFoundError } from '../../http/errors.js';
+import { ConflictError, NotFoundError } from '../../http/errors.js';
 import { createHeadToolCatalog } from './head-tool-catalog.js';
+import type {
+  WorkingContextSummaryService,
+  WorkingContextSummarySnapshot,
+} from './working-context-summary-service.js';
+
+const HEAD_TURN_CLAIM_RETRY_LIMIT = 3;
 
 type TriggerLoadResult = {
   inReplyToInboundMessageId?: string;
@@ -49,7 +68,7 @@ function now(): string {
   return new Date().toISOString();
 }
 
-function createRuntimeIdentifier(prefix: 'hdr'): string {
+function createRuntimeIdentifier(prefix: 'ctx' | 'hdr'): string {
   return `${prefix}_${randomBytes(12).toString('hex')}`;
 }
 
@@ -67,20 +86,31 @@ function createWorkingContextRecord(input: {
   agentId: string;
   correlation: HeadStartTurnRequest['correlation'];
   createdAt: string;
-  workingContextId: string;
 }): WorkingContext {
   return {
-    id: input.workingContextId,
+    id: createRuntimeIdentifier('ctx'),
     recordType: 'working_context',
     schemaVersion: 1,
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
     correlation: input.correlation,
     agentId: input.agentId,
-    lastTrustedMessageSequence: 0,
+    latestInboundSequence: 0,
+    latestProcessedSequence: 0,
     activeHeadTurnId: null,
+    activeHeadTurnStartedAt: null,
+    activeHeadTurnReadThroughSequence: null,
+    pendingSupersededBySequence: null,
+    debounceUntil: null,
+    pendingDebounceSequence: null,
+    episodeLocalDate: null,
+    episodeTurnCount: 0,
     activeTaskId: null,
     summary: '',
+    summaryUpdatedAt: null,
+    currentObjective: null,
+    latestHandsStatus: null,
+    openQuestions: [],
     conversationCursor: undefined,
     openTaskIds: [],
     pendingApprovalIds: [],
@@ -91,9 +121,10 @@ function createRunningHeadTurn(input: {
   agentId: string;
   correlation: HeadStartTurnRequest['correlation'];
   createdAt: string;
+  episodeLocalDate: string | null;
+  episodeTurnIndex: number | null;
   headTurnId: string;
   trigger: HeadStartTurnRequest['trigger'];
-  workingContextId: string;
   workingContext: WorkingContext;
 }): HeadTurn {
   return {
@@ -107,7 +138,7 @@ function createRunningHeadTurn(input: {
       headTurnId: input.headTurnId,
     },
     agentId: input.agentId,
-    workingContextId: input.workingContextId,
+    workingContextId: input.workingContext.id,
     state: 'running',
     triggerKind: input.trigger.kind,
     inboundMessageIds:
@@ -120,8 +151,12 @@ function createRunningHeadTurn(input: {
     scheduleId:
       input.trigger.kind === 'due_task' ? input.trigger.scheduleId ?? null : null,
     dueAt: input.trigger.kind === 'due_task' ? input.trigger.dueAt : null,
+    claimedAt: input.createdAt,
     startedAt: input.createdAt,
     completedAt: null,
+    staleCheckedAt: null,
+    episodeLocalDate: input.episodeLocalDate,
+    episodeTurnIndex: input.episodeTurnIndex,
     supersededBySequence: null,
     providerConversationId: input.workingContext.conversationCursor ?? null,
     providerRunId: null,
@@ -129,6 +164,57 @@ function createRunningHeadTurn(input: {
     completionKind: null,
     failureCode: undefined,
     failureMessage: undefined,
+    responseMessageId: null,
+  };
+}
+
+function createRejectedHeadTurn(input: {
+  agentId: string;
+  correlation: HeadStartTurnRequest['correlation'];
+  rejectedAt: string;
+  rejection: TurnRejection;
+  trigger: HeadStartTurnRequest['trigger'];
+  workingContext: WorkingContext;
+}): HeadTurn {
+  const headTurnId = createRuntimeIdentifier('hdr');
+
+  return {
+    id: headTurnId,
+    recordType: 'head_turn',
+    schemaVersion: 1,
+    createdAt: input.rejectedAt,
+    updatedAt: input.rejectedAt,
+    correlation: {
+      ...input.correlation,
+      headTurnId,
+    },
+    agentId: input.agentId,
+    workingContextId: input.workingContext.id,
+    state: 'completed',
+    triggerKind: input.trigger.kind,
+    inboundMessageIds:
+      input.trigger.kind === 'trusted_messages' ? input.trigger.inboundMessageIds : [],
+    readThroughMessageSequence:
+      input.trigger.kind === 'trusted_messages'
+        ? input.trigger.readThroughMessageSequence
+        : null,
+    taskId: input.trigger.kind === 'due_task' ? input.trigger.taskId ?? null : null,
+    scheduleId:
+      input.trigger.kind === 'due_task' ? input.trigger.scheduleId ?? null : null,
+    dueAt: input.trigger.kind === 'due_task' ? input.trigger.dueAt : null,
+    claimedAt: input.rejectedAt,
+    startedAt: null,
+    completedAt: input.rejectedAt,
+    staleCheckedAt: null,
+    episodeLocalDate: input.workingContext.episodeLocalDate,
+    episodeTurnIndex: null,
+    supersededBySequence: null,
+    providerConversationId: input.workingContext.conversationCursor ?? null,
+    providerRunId: null,
+    promptProfileVersion: HEAD_BASE_PROMPT_PROFILE_VERSION,
+    completionKind: 'rejected',
+    failureCode: input.rejection.code,
+    failureMessage: input.rejection.message,
     responseMessageId: null,
   };
 }
@@ -172,6 +258,33 @@ function createReplyDraft(input: {
   };
 }
 
+function resolveHeadRuntimeModel(input: {
+  agent: Agent;
+  runtimeMode: ApiRuntimeConfig['runtimeMode'];
+}): string | undefined {
+  if (input.runtimeMode === 'local-minimal') {
+    return input.agent.headModel;
+  }
+
+  return input.agent.headModel.startsWith('dep-') ||
+    input.agent.headModel.startsWith('dep_')
+    ? input.agent.headModel
+    : undefined;
+}
+
+function buildExistingSummarySnapshot(
+  workingContext: WorkingContext,
+  completedAt: string,
+): WorkingContextSummarySnapshot {
+  return {
+    currentObjective: workingContext.currentObjective,
+    latestHandsStatus: workingContext.latestHandsStatus,
+    openQuestions: workingContext.openQuestions,
+    summary: workingContext.summary,
+    summaryUpdatedAt: workingContext.summaryUpdatedAt ?? completedAt,
+  };
+}
+
 async function getRequiredAgent(
   repositories: RepositoryBundle,
   agentId: string,
@@ -199,35 +312,36 @@ async function getRequiredPrimaryChannel(
 async function getOrCreateWorkingContext(options: {
   correlation: HeadStartTurnRequest['correlation'];
   repositories: RepositoryBundle;
-  requestedWorkingContextId: string;
   startedAt: string;
   storedAgent: StoredRecord<Agent>;
 }): Promise<StoredRecord<WorkingContext>> {
-  const existing = await options.repositories.workingContexts.get(
-    options.storedAgent.value.id,
-    options.requestedWorkingContextId,
-  );
-  if (existing) {
-    return existing;
-  }
-
   const byAgent = await options.repositories.workingContexts.getByAgent(options.storedAgent.value.id);
   if (byAgent) {
-    if (byAgent.value.id !== options.requestedWorkingContextId) {
-      throw new NotFoundError('Working context not found for the requested id.');
-    }
-
     return byAgent;
   }
 
-  return options.repositories.workingContexts.create(
-    createWorkingContextRecord({
-      agentId: options.storedAgent.value.id,
-      correlation: options.correlation,
-      createdAt: options.startedAt,
-      workingContextId: options.requestedWorkingContextId,
-    }),
-  );
+  try {
+    return await options.repositories.workingContexts.create(
+      createWorkingContextRecord({
+        agentId: options.storedAgent.value.id,
+        correlation: options.correlation,
+        createdAt: options.startedAt,
+      }),
+    );
+  } catch (error) {
+    if (!(error instanceof DuplicateRecordError)) {
+      throw error;
+    }
+
+    const existing = await options.repositories.workingContexts.getByAgent(
+      options.storedAgent.value.id,
+    );
+    if (!existing) {
+      throw error;
+    }
+
+    return existing;
+  }
 }
 
 async function loadTriggerState(options: {
@@ -366,28 +480,80 @@ function validateTurn(options: {
   return null;
 }
 
+async function resolveCurrentWorkingContext(options: {
+  correlation: HeadStartTurnRequest['correlation'];
+  repositories: RepositoryBundle;
+  startedAt: string;
+  storedAgent: StoredRecord<Agent>;
+}): Promise<StoredRecord<WorkingContext>> {
+  return getOrCreateWorkingContext(options);
+}
+
+async function loadHeadTurnForAgent(options: {
+  agentId: string;
+  headTurnId: string;
+  repositories: RepositoryBundle;
+}): Promise<StoredRecord<HeadTurn>> {
+  const storedHeadTurn = await options.repositories.execution.getHeadTurn(
+    options.agentId,
+    options.headTurnId,
+  );
+  if (!storedHeadTurn) {
+    throw new NotFoundError('Head turn not found.');
+  }
+
+  return storedHeadTurn;
+}
+
+function isTurnSuperseded(options: {
+  headTurn: HeadTurn;
+  workingContext: WorkingContext;
+}): boolean {
+  if (options.workingContext.activeHeadTurnId !== options.headTurn.id) {
+    return true;
+  }
+
+  if (options.headTurn.readThroughMessageSequence == null) {
+    return false;
+  }
+
+  if (
+    shouldSupersedeTurn({
+      activeReadThroughSequence: options.headTurn.readThroughMessageSequence,
+      latestInboundSequence: options.workingContext.latestInboundSequence,
+    })
+  ) {
+    return true;
+  }
+
+  return (
+    options.workingContext.pendingSupersededBySequence != null &&
+    options.workingContext.pendingSupersededBySequence >
+      options.headTurn.readThroughMessageSequence
+  );
+}
+
 export function createHeadRuntimeService(options: {
   config: ApiRuntimeConfig;
   headRuntime: HeadRuntimeAdapter;
   logger: Logger;
   repositories: RepositoryBundle;
   repositoryConfig: RepositoryConfig;
+  workingContextSummaryService: WorkingContextSummaryService;
 }): HeadService {
   return {
     async startTurn(input: HeadStartTurnRequest): Promise<HeadTurnExecutionResult> {
       options.logger.info('head_runtime.start_turn', {
         agentId: input.agentId,
-        workingContextId: input.workingContextId,
         triggerKind: input.trigger.kind,
       });
 
       const startedAt = now();
       const storedAgent = await getRequiredAgent(options.repositories, input.agentId);
       const storedChannel = await getRequiredPrimaryChannel(options.repositories, storedAgent.value);
-      const storedWorkingContext = await getOrCreateWorkingContext({
+      const initialWorkingContext = await resolveCurrentWorkingContext({
         correlation: input.correlation,
         repositories: options.repositories,
-        requestedWorkingContextId: input.workingContextId,
         startedAt,
         storedAgent,
       });
@@ -397,17 +563,6 @@ export function createHeadRuntimeService(options: {
         repositories: options.repositories,
         trigger: input.trigger,
       });
-      const createdHeadTurn = await options.repositories.execution.createHeadTurn(
-        createRunningHeadTurn({
-          agentId: storedAgent.value.id,
-          correlation: input.correlation,
-          createdAt: startedAt,
-          headTurnId: createRuntimeIdentifier('hdr'),
-          trigger: input.trigger,
-          workingContext: storedWorkingContext.value,
-          workingContextId: storedWorkingContext.value.id,
-        }),
-      );
 
       const rejection = validateTurn({
         agent: storedAgent.value,
@@ -417,18 +572,15 @@ export function createHeadRuntimeService(options: {
       });
 
       if (rejection) {
-        const rejectedAt = now();
-        const rejectedTurn = await options.repositories.execution.replaceHeadTurn(
-          {
-            ...createdHeadTurn.value,
-            updatedAt: rejectedAt,
-            completedAt: rejectedAt,
-            state: 'completed',
-            completionKind: 'rejected',
-            failureCode: rejection.code,
-            failureMessage: rejection.message,
-          },
-          createdHeadTurn.etag,
+        const rejectedTurn = await options.repositories.execution.createHeadTurn(
+          createRejectedHeadTurn({
+            agentId: storedAgent.value.id,
+            correlation: input.correlation,
+            rejectedAt: now(),
+            rejection,
+            trigger: input.trigger,
+            workingContext: initialWorkingContext.value,
+          }),
         );
 
         return headTurnExecutionResultSchema.parse({
@@ -439,14 +591,120 @@ export function createHeadRuntimeService(options: {
         });
       }
 
-      const activeContext = await options.repositories.workingContexts.replace(
-        {
-          ...storedWorkingContext.value,
-          activeHeadTurnId: createdHeadTurn.value.id,
-          updatedAt: startedAt,
-        },
-        storedWorkingContext.etag,
-      );
+      let claimedWorkingContext: StoredRecord<WorkingContext> | null = null;
+      let createdHeadTurn: StoredRecord<HeadTurn> | null = null;
+
+      for (let attempt = 0; attempt < HEAD_TURN_CLAIM_RETRY_LIMIT; attempt += 1) {
+        let storedWorkingContext = await resolveCurrentWorkingContext({
+          correlation: input.correlation,
+          repositories: options.repositories,
+          startedAt: now(),
+          storedAgent,
+        });
+        const claimTime = now();
+
+        if (
+          shouldRotateEpisode({
+            episodeLocalDate: storedWorkingContext.value.episodeLocalDate,
+            episodeTurnCount: storedWorkingContext.value.episodeTurnCount,
+            eventAt: claimTime,
+            timeZone: storedAgent.value.timeZone,
+          })
+        ) {
+          try {
+            storedWorkingContext = await options.repositories.workingContexts.replace(
+              applyEpisodeRotation({
+                eventAt: claimTime,
+                timeZone: storedAgent.value.timeZone,
+                workingContext: storedWorkingContext.value,
+              }),
+              storedWorkingContext.etag,
+            );
+          } catch (error) {
+            if (error instanceof OptimisticConcurrencyError) {
+              continue;
+            }
+
+            throw error;
+          }
+        }
+
+        if (storedWorkingContext.value.activeHeadTurnId != null) {
+          const activeHeadTurn = await options.repositories.execution.getHeadTurn(
+            storedAgent.value.id,
+            storedWorkingContext.value.activeHeadTurnId,
+          );
+
+          if (
+            !activeHeadTurn ||
+            activeHeadTurn.value.state === 'completed' ||
+            activeHeadTurn.value.state === 'failed' ||
+            activeHeadTurn.value.state === 'superseded'
+          ) {
+            try {
+              await options.repositories.workingContexts.replace(
+                clearHeadTurnClaim({
+                  releasedAt: claimTime,
+                  workingContext: storedWorkingContext.value,
+                }),
+                storedWorkingContext.etag,
+              );
+            } catch (error) {
+              if (error instanceof OptimisticConcurrencyError) {
+                continue;
+              }
+
+              throw error;
+            }
+
+            continue;
+          }
+
+          throw new ConflictError(
+            `Agent ${storedAgent.value.id} already has an active Head turn.`,
+          );
+        }
+
+        const headTurnDraft = createRunningHeadTurn({
+          agentId: storedAgent.value.id,
+          correlation: input.correlation,
+          createdAt: claimTime,
+          episodeLocalDate: storedWorkingContext.value.episodeLocalDate,
+          episodeTurnIndex: storedWorkingContext.value.episodeTurnCount + 1,
+          headTurnId: createRuntimeIdentifier('hdr'),
+          trigger: input.trigger,
+          workingContext: storedWorkingContext.value,
+        });
+
+        try {
+          const claimResult = await options.repositories.execution.claimHeadTurn({
+            headTurn: headTurnDraft,
+            workingContext: applyHeadTurnClaim({
+              claimedAt: claimTime,
+              headTurnId: headTurnDraft.id,
+              readThroughSequence: headTurnDraft.readThroughMessageSequence,
+              workingContext: storedWorkingContext.value,
+            }),
+            workingContextEtag: storedWorkingContext.etag,
+          });
+
+          createdHeadTurn = claimResult.headTurn;
+          claimedWorkingContext = claimResult.workingContext;
+          break;
+        } catch (error) {
+          if (error instanceof OptimisticConcurrencyError) {
+            continue;
+          }
+
+          throw error;
+        }
+      }
+
+      if (!createdHeadTurn || !claimedWorkingContext) {
+        throw new ConflictError(
+          `Unable to claim an authoritative Head turn for agent ${storedAgent.value.id}.`,
+        );
+      }
 
       const activeHeadTurns = await options.repositories.execution.listActiveHeadTurns(
         storedAgent.value.id,
@@ -457,7 +715,7 @@ export function createHeadRuntimeService(options: {
         channel: storedChannel.value,
         headTurn: createdHeadTurn.value,
         repositoryConfig: options.repositoryConfig,
-        workingContext: activeContext.value,
+        workingContext: claimedWorkingContext.value,
       });
       const prompt = buildHeadPrompt({
         agent: storedAgent.value,
@@ -474,10 +732,14 @@ export function createHeadRuntimeService(options: {
         },
         trigger: input.trigger,
         webSearchEnabled: true,
-        workingContext: activeContext.value,
+        workingContext: claimedWorkingContext.value,
       });
 
       try {
+        const requestedModel = resolveHeadRuntimeModel({
+          agent: storedAgent.value,
+          runtimeMode: options.config.runtimeMode,
+        });
         const runtimeResult = await options.headRuntime.executeTurn({
           agentId: storedAgent.value.id,
           capabilitySummary: buildCapabilitySummary({
@@ -485,22 +747,148 @@ export function createHeadRuntimeService(options: {
             registry: options.repositoryConfig.capabilities.registry,
             visibleCapabilityIds: toolCatalog.visibleCapabilityIds,
           }),
-          conversationCursor: activeContext.value.conversationCursor ?? null,
+          conversationCursor: claimedWorkingContext.value.conversationCursor ?? null,
           correlation: createdHeadTurn.value.correlation,
           enabledTools: toolCatalog.enabledTools,
           headTurnId: createdHeadTurn.value.id,
-          model: storedAgent.value.headModel,
           modelInput: triggerState.modelInput,
           prompt,
           webSearchEnabled: true,
+          ...(requestedModel ? { model: requestedModel } : {}),
         });
+        const staleCheckedAt = now();
+        const latestHeadTurn = await loadHeadTurnForAgent({
+          agentId: storedAgent.value.id,
+          headTurnId: createdHeadTurn.value.id,
+          repositories: options.repositories,
+        });
+        const latestWorkingContext = await resolveCurrentWorkingContext({
+          correlation: input.correlation,
+          repositories: options.repositories,
+          startedAt: staleCheckedAt,
+          storedAgent,
+        });
+
+        if (
+          latestHeadTurn.value.state === 'superseded' ||
+          isTurnSuperseded({
+            headTurn: latestHeadTurn.value,
+            workingContext: latestWorkingContext.value,
+          })
+        ) {
+          if (latestHeadTurn.value.state !== 'superseded') {
+            const supersededAt = now();
+            const supersededBySequence =
+              latestWorkingContext.value.latestInboundSequence >
+              (latestHeadTurn.value.readThroughMessageSequence ?? 0)
+                ? latestWorkingContext.value.latestInboundSequence
+                : latestHeadTurn.value.supersededBySequence ?? 0;
+            const supersededWorkingContext =
+              latestWorkingContext.value.activeHeadTurnId === latestHeadTurn.value.id
+                ? applyHeadTurnSuperseded({
+                    headTurnId: latestHeadTurn.value.id,
+                    supersededAt,
+                    supersededBySequence,
+                    workingContext: latestWorkingContext.value,
+                  })
+                : undefined;
+
+            const supersededResult = await options.repositories.execution.supersedeHeadTurn({
+              headTurn: {
+                ...latestHeadTurn.value,
+                updatedAt: supersededAt,
+                completedAt: supersededAt,
+                staleCheckedAt,
+                state: 'superseded',
+                supersededBySequence,
+                providerConversationId: runtimeResult.providerConversationId,
+                providerRunId: runtimeResult.providerRunId,
+                promptProfileVersion: prompt.promptProfileVersion,
+              },
+              headTurnEtag: latestHeadTurn.etag,
+              ...(supersededWorkingContext
+                ? {
+                    workingContext: supersededWorkingContext,
+                    workingContextEtag: latestWorkingContext.etag,
+                  }
+                : {}),
+            });
+
+            return headTurnExecutionResultSchema.parse({
+              headTurn: supersededResult.headTurn.value,
+              status: 'superseded',
+              replyDraft: null,
+              effectSummary: createEmptyEffectSummary(),
+            });
+          }
+
+          return headTurnExecutionResultSchema.parse({
+            headTurn: latestHeadTurn.value,
+            status: 'superseded',
+            replyDraft: null,
+            effectSummary: createEmptyEffectSummary(),
+          });
+        }
+
+        if (runtimeResult.completionKind === 'failed') {
+          const failedAt = now();
+          const failedResult = await options.repositories.execution.finalizeHeadTurn({
+            headTurn: {
+              ...latestHeadTurn.value,
+              updatedAt: failedAt,
+              completedAt: failedAt,
+              staleCheckedAt,
+              state: 'failed',
+              providerConversationId: runtimeResult.providerConversationId,
+              providerRunId: runtimeResult.providerRunId,
+              promptProfileVersion: prompt.promptProfileVersion,
+              completionKind: 'failed',
+              failureCode: 'foundry_execution_failed',
+              failureMessage: 'Foundry execution returned a failed completion.',
+            },
+            headTurnEtag: latestHeadTurn.etag,
+            workingContext: clearHeadTurnClaim({
+              releasedAt: failedAt,
+              workingContext: latestWorkingContext.value,
+            }),
+            workingContextEtag: latestWorkingContext.etag,
+          });
+
+          return headTurnExecutionResultSchema.parse({
+            headTurn: failedResult.headTurn.value,
+            status: 'failed',
+            replyDraft: null,
+            effectSummary: createEmptyEffectSummary(),
+          });
+        }
+
         const completedAt = now();
-        const finalizedTurn = await options.repositories.execution.replaceHeadTurn(
-          {
-            ...createdHeadTurn.value,
+        const summarySnapshot =
+          input.trigger.kind === 'trusted_messages'
+            ? await options.workingContextSummaryService.refreshAfterTrustedTurn({
+                agent: storedAgent.value,
+                assistantReplyText: runtimeResult.assistantText,
+                completedAt,
+                trigger: input.trigger,
+                trustedMessages: triggerState.messages,
+                workingContext: latestWorkingContext.value,
+              })
+            : buildExistingSummarySnapshot(latestWorkingContext.value, completedAt);
+        const finalizedWorkingContext = applyHeadTurnCommitted({
+          assistantSummary: summarySnapshot,
+          completedAt,
+          conversationCursor: runtimeResult.conversationCursor,
+          incrementEpisodeTurnCount: true,
+          readThroughSequence: latestHeadTurn.value.readThroughMessageSequence,
+          workingContext: latestWorkingContext.value,
+        });
+        const finalizedTurn = await options.repositories.execution.finalizeHeadTurn({
+          headTurn: {
+            ...latestHeadTurn.value,
             updatedAt: completedAt,
             completedAt,
-            state: runtimeResult.completionKind === 'failed' ? 'failed' : 'completed',
+            staleCheckedAt,
+            state: 'completed',
             providerConversationId: runtimeResult.providerConversationId,
             providerRunId: runtimeResult.providerRunId,
             promptProfileVersion: prompt.promptProfileVersion,
@@ -508,24 +896,13 @@ export function createHeadRuntimeService(options: {
             failureCode: undefined,
             failureMessage: undefined,
           },
-          createdHeadTurn.etag,
-        );
-        await options.repositories.workingContexts.replace(
-          {
-            ...activeContext.value,
-            activeHeadTurnId: null,
-            conversationCursor: runtimeResult.conversationCursor ?? undefined,
-            lastTrustedMessageSequence:
-              input.trigger.kind === 'trusted_messages'
-                ? input.trigger.readThroughMessageSequence
-                : activeContext.value.lastTrustedMessageSequence,
-            updatedAt: completedAt,
-          },
-          activeContext.etag,
-        );
+          headTurnEtag: latestHeadTurn.etag,
+          workingContext: finalizedWorkingContext,
+          workingContextEtag: latestWorkingContext.etag,
+        });
 
         return headTurnExecutionResultSchema.parse({
-          headTurn: finalizedTurn.value,
+          headTurn: finalizedTurn.headTurn.value,
           status: mapCompletionKindToStatus(runtimeResult.completionKind),
           replyDraft: createReplyDraft({
             agentId: storedAgent.value.id,
@@ -537,30 +914,55 @@ export function createHeadRuntimeService(options: {
         });
       } catch (error) {
         const failedAt = now();
-        const failedTurn = await options.repositories.execution.replaceHeadTurn(
-          {
-            ...createdHeadTurn.value,
+        const latestHeadTurn = await loadHeadTurnForAgent({
+          agentId: storedAgent.value.id,
+          headTurnId: createdHeadTurn.value.id,
+          repositories: options.repositories,
+        });
+        const latestWorkingContext = await resolveCurrentWorkingContext({
+          correlation: input.correlation,
+          repositories: options.repositories,
+          startedAt: failedAt,
+          storedAgent,
+        });
+
+        if (
+          latestHeadTurn.value.state === 'superseded' ||
+          isTurnSuperseded({
+            headTurn: latestHeadTurn.value,
+            workingContext: latestWorkingContext.value,
+          })
+        ) {
+          return headTurnExecutionResultSchema.parse({
+            headTurn: latestHeadTurn.value,
+            status: 'superseded',
+            replyDraft: null,
+            effectSummary: createEmptyEffectSummary(),
+          });
+        }
+
+        const failedResult = await options.repositories.execution.finalizeHeadTurn({
+          headTurn: {
+            ...latestHeadTurn.value,
             updatedAt: failedAt,
             completedAt: failedAt,
+            staleCheckedAt: failedAt,
             state: 'failed',
             completionKind: 'failed',
             failureCode: 'foundry_execution_failed',
             failureMessage:
               error instanceof Error ? error.message : 'Foundry execution failed unexpectedly.',
           },
-          createdHeadTurn.etag,
-        );
-        await options.repositories.workingContexts.replace(
-          {
-            ...activeContext.value,
-            activeHeadTurnId: null,
-            updatedAt: failedAt,
-          },
-          activeContext.etag,
-        );
+          headTurnEtag: latestHeadTurn.etag,
+          workingContext: clearHeadTurnClaim({
+            releasedAt: failedAt,
+            workingContext: latestWorkingContext.value,
+          }),
+          workingContextEtag: latestWorkingContext.etag,
+        });
 
         return headTurnExecutionResultSchema.parse({
-          headTurn: failedTurn.value,
+          headTurn: failedResult.headTurn.value,
           status: 'failed',
           replyDraft: null,
           effectSummary: createEmptyEffectSummary(),
@@ -593,33 +995,35 @@ export function createHeadRuntimeService(options: {
       }
 
       const supersededAt = now();
-      const updatedTurn = await options.repositories.execution.replaceHeadTurn(
-        {
-          ...storedHeadTurn.value,
-          updatedAt: supersededAt,
-          completedAt: storedHeadTurn.value.completedAt ?? supersededAt,
-          state: 'superseded',
-          supersededBySequence: input.supersededBySequence,
-        },
-        storedHeadTurn.etag,
-      );
       const storedWorkingContext = await options.repositories.workingContexts.get(
         storedHeadTurn.value.agentId,
         storedHeadTurn.value.workingContextId,
       );
+      const supersededResult = await options.repositories.execution.supersedeHeadTurn({
+        headTurn: {
+          ...storedHeadTurn.value,
+          updatedAt: supersededAt,
+          completedAt: storedHeadTurn.value.completedAt ?? supersededAt,
+          staleCheckedAt: storedHeadTurn.value.staleCheckedAt ?? supersededAt,
+          state: 'superseded',
+          supersededBySequence: input.supersededBySequence,
+        },
+        headTurnEtag: storedHeadTurn.etag,
+        ...(storedWorkingContext &&
+        storedWorkingContext.value.activeHeadTurnId === storedHeadTurn.value.id
+          ? {
+              workingContext: applyHeadTurnSuperseded({
+                headTurnId: storedHeadTurn.value.id,
+                supersededAt,
+                supersededBySequence: input.supersededBySequence,
+                workingContext: storedWorkingContext.value,
+              }),
+              workingContextEtag: storedWorkingContext.etag,
+            }
+          : {}),
+      });
 
-      if (storedWorkingContext && storedWorkingContext.value.activeHeadTurnId === storedHeadTurn.value.id) {
-        await options.repositories.workingContexts.replace(
-          {
-            ...storedWorkingContext.value,
-            activeHeadTurnId: null,
-            updatedAt: supersededAt,
-          },
-          storedWorkingContext.etag,
-        );
-      }
-
-      return updatedTurn.value;
+      return supersededResult.headTurn.value;
     },
   };
 }

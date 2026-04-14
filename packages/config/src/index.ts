@@ -87,6 +87,7 @@ const apiEnvSchema = sharedEnvSchema.extend({
   ECHIDNA_API_PUBLIC_BASE_URL: optionalUrlSchema,
   ECHIDNA_API_TRUST_PROXY: optionalBooleanSchema,
   ECHIDNA_API_REQUEST_LOGGING_ENABLED: optionalBooleanSchema,
+  ECHIDNA_HEAD_DEBOUNCE_WINDOW_MS: z.coerce.number().int().min(0).default(750),
   ECHIDNA_SANDBOX_BASE_URL: optionalUrlSchema,
   ECHIDNA_HANDS_JOB_TARGET: optionalNonEmptyStringSchema,
   ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME: optionalNonEmptyStringSchema,
@@ -165,6 +166,9 @@ export type SharedCloudDependenciesConfig = {
 export type ApiDependencyConfig = {
   foundry: {
     defaultDeploymentName: string;
+  };
+  head: {
+    debounceWindowMs: number;
   };
   hands: {
     jobTarget: string;
@@ -305,6 +309,9 @@ function resolveApiDependencyConfig(
     foundry: {
       defaultDeploymentName: env.ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME ?? 'gpt-5.4-mini',
     },
+    head: {
+      debounceWindowMs: env.ECHIDNA_HEAD_DEBOUNCE_WINDOW_MS,
+    },
     hands: {
       jobTarget: env.ECHIDNA_HANDS_JOB_TARGET ?? 'local-hands-job',
     },
@@ -340,6 +347,7 @@ function resolveApiDependencyConfig(
     foundry: {
       defaultDeploymentName: remoteEnv.ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME,
     },
+    head: defaults.head,
     hands: {
       jobTarget: remoteEnv.ECHIDNA_HANDS_JOB_TARGET,
     },

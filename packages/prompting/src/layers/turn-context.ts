@@ -37,8 +37,15 @@ export function renderTurnContextLayer(input: {
   const lines = ['# Turn Context', ...renderTriggerSummary(input.trigger, input.latestTrustedMessageText)];
 
   lines.push(`Working-context summary: ${input.workingContext.summary || 'No summary is currently stored.'}`);
+  lines.push(`Current objective: ${input.workingContext.currentObjective ?? 'none'}`);
+  lines.push(`Open questions: ${input.workingContext.openQuestions.join(', ') || 'none'}`);
+  lines.push(`Latest Hands status: ${input.workingContext.latestHandsStatus ?? 'none'}`);
   lines.push(`Open task ids: ${input.workingContext.openTaskIds.join(', ') || 'none'}`);
   lines.push(`Pending approval ids: ${input.workingContext.pendingApprovalIds.join(', ') || 'none'}`);
+  lines.push(`Latest inbound sequence: ${input.workingContext.latestInboundSequence}`);
+  lines.push(`Latest processed sequence: ${input.workingContext.latestProcessedSequence}`);
+  lines.push(`Episode local date: ${input.workingContext.episodeLocalDate ?? 'unset'}`);
+  lines.push(`Episode turn count: ${input.workingContext.episodeTurnCount}`);
   lines.push(
     `Conversation cursor: ${input.workingContext.conversationCursor ?? 'none yet; create one if the provider requires it'}`,
   );

@@ -9,7 +9,6 @@ import {
   isoDateTimeSchema,
   scheduleIdSchema,
   taskIdSchema,
-  workingContextIdSchema,
 } from './identifiers.js';
 import {
   headTurnSchema,
@@ -87,6 +86,7 @@ export const headTurnExecutionStatusSchema = z.enum([
   'tool_only',
   'rejected',
   'failed',
+  'superseded',
 ]);
 
 export const headTurnExecutionResultSchema = z
@@ -118,7 +118,6 @@ export const headTurnExecutionResultSchema = z
 export const headStartTurnRequestSchema = z
   .object({
     agentId: agentIdSchema,
-    workingContextId: workingContextIdSchema,
     trigger: headTriggerSchema,
     correlation: correlationMetadataSchema,
   })

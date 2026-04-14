@@ -4,6 +4,7 @@ import {
   resetAgentProvisioningForRetry,
   transitionTaskState,
 } from '@echidna-claw/domain';
+import type { HeadTurn } from '@echidna-claw/contracts';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -105,6 +106,83 @@ function createTestSuite() {
       clock,
     }),
   };
+}
+
+function createHeadTurn(overrides: Partial<HeadTurn> = {}): HeadTurn {
+  return {
+    id: 'hdr_persistence',
+    recordType: 'head_turn',
+    schemaVersion: 1,
+    createdAt: '2026-04-12T00:00:00.000Z',
+    updatedAt: '2026-04-12T00:00:00.000Z',
+    correlation: createCorrelationMetadata({
+      headTurnId: 'hdr_persistence',
+      idempotencyKey: 'idem_head-turn',
+      traceId: 'trc_head-turn',
+    }),
+    agentId: 'agt_persistence',
+    workingContextId: 'ctx_persistence',
+    state: 'running',
+    triggerKind: 'trusted_messages',
+    inboundMessageIds: ['inm_persistence'],
+    readThroughMessageSequence: 1,
+    taskId: null,
+    scheduleId: null,
+    dueAt: null,
+    claimedAt: '2026-04-12T00:00:00.000Z',
+    startedAt: '2026-04-12T00:00:00.000Z',
+    completedAt: null,
+    staleCheckedAt: null,
+    episodeLocalDate: '2026-04-12',
+    episodeTurnIndex: 1,
+    supersededBySequence: null,
+    providerConversationId: 'stub-conversation:hdr_persistence',
+    providerRunId: 'stub-run:hdr_persistence',
+    promptProfileVersion: 'head-base-v1',
+    completionKind: null,
+    failureCode: undefined,
+    failureMessage: undefined,
+    responseMessageId: null,
+    ...overrides,
+  };
+}
+
+async function appendInboundSequence(options: {
+  channel: Awaited<ReturnType<ReturnType<typeof createTestSuite>['repositories']['channels']['create']>>;
+  repositories: ReturnType<typeof createTestSuite>['repositories'];
+  sequence: number;
+  trusted: boolean;
+}): Promise<
+  Awaited<
+    ReturnType<ReturnType<typeof createTestSuite>['repositories']['messages']['appendInboundMessage']>
+  >
+> {
+  const messageId = `inm_seq-${options.sequence}` as const;
+  const message = createInboundMessage({
+    id: messageId,
+    sequence: options.sequence,
+    trusted: options.trusted,
+    externalMessageId: `telegram-message-${options.sequence}`,
+    externalUpdateId: `telegram-update-${options.sequence}`,
+  });
+
+  return options.repositories.messages.appendInboundMessage({
+    channel: {
+      ...options.channel.value,
+      lastInboundSequence: options.sequence,
+      lastInboundExternalMessageId: message.externalMessageId,
+      lastExternalMessageId: message.externalMessageId,
+      lastInboundReceivedAt: message.receivedAt,
+      updatedAt: message.receivedAt,
+    },
+    channelEtag: options.channel.etag,
+    idempotencyRecord: createIdempotencyRecord({
+      id: `idr_seq-${options.sequence}`,
+      key: `telegram-update-${options.sequence}`,
+      resultReference: message.id,
+    }),
+    message,
+  });
 }
 
 describe('repository suite contracts', () => {
@@ -233,6 +311,40 @@ describe('repository suite contracts', () => {
     expect(replayed.replayed).toBe(true);
     expect(replayed.message.value.id).toBe(message.id);
     expect(replayed.idempotencyRecord.value.resultReference).toBe(message.id);
+  });
+
+  it('lists the exact trusted inbound message window by inclusive sequence range', async () => {
+    const { repositories } = createTestSuite();
+    await repositories.agents.create(createAgent());
+    let channel = await repositories.channels.create(createChannel());
+
+    channel = (await appendInboundSequence({
+      channel,
+      repositories,
+      sequence: 1,
+      trusted: true,
+    })).channel;
+    channel = (await appendInboundSequence({
+      channel,
+      repositories,
+      sequence: 2,
+      trusted: false,
+    })).channel;
+    await appendInboundSequence({
+      channel,
+      repositories,
+      sequence: 3,
+      trusted: true,
+    });
+
+    const window = await repositories.messages.listTrustedInboundMessagesBySequenceRange({
+      agentId: 'agt_persistence',
+      channelId: 'chn_persistence',
+      fromSequence: 1,
+      throughSequence: 3,
+    });
+
+    expect(window.map((message) => message.value.sequence)).toEqual([1, 3]);
   });
 
   it('updates outbound delivery state and channel bookkeeping atomically', async () => {
@@ -475,6 +587,141 @@ describe('repository suite contracts', () => {
 
     await repositories.usageEvents.append(createUsageEvent());
     expect((await repositories.usageEvents.listByAgent('agt_persistence')).length).toBe(1);
+  });
+
+  it('claims and finalizes head turns atomically with the working context', async () => {
+    const { repositories } = createTestSuite();
+    await repositories.agents.create(createAgent());
+    const createdWorkingContext = await repositories.workingContexts.create(
+      createWorkingContext({
+        latestInboundSequence: 2,
+        latestProcessedSequence: 1,
+        episodeTurnCount: 1,
+      }),
+    );
+
+    const claimed = await repositories.execution.claimHeadTurn({
+      headTurn: createHeadTurn({
+        id: 'hdr_claimed',
+        readThroughMessageSequence: 2,
+      }),
+      workingContext: {
+        ...createdWorkingContext.value,
+        activeHeadTurnId: 'hdr_claimed',
+        activeHeadTurnStartedAt: '2026-04-12T00:10:00.000Z',
+        activeHeadTurnReadThroughSequence: 2,
+        updatedAt: '2026-04-12T00:10:00.000Z',
+      },
+      workingContextEtag: createdWorkingContext.etag,
+    });
+
+    expect(claimed.headTurn.value.id).toBe('hdr_claimed');
+    expect(claimed.workingContext.value.activeHeadTurnId).toBe('hdr_claimed');
+
+    const finalized = await repositories.execution.finalizeHeadTurn({
+      headTurn: {
+        ...claimed.headTurn.value,
+        updatedAt: '2026-04-12T00:11:00.000Z',
+        completedAt: '2026-04-12T00:11:00.000Z',
+        staleCheckedAt: '2026-04-12T00:11:00.000Z',
+        state: 'completed',
+        completionKind: 'reply',
+      },
+      headTurnEtag: claimed.headTurn.etag,
+      workingContext: {
+        ...claimed.workingContext.value,
+        activeHeadTurnId: null,
+        activeHeadTurnStartedAt: null,
+        activeHeadTurnReadThroughSequence: null,
+        latestProcessedSequence: 2,
+        conversationCursor: 'stub-conversation:hdr_claimed',
+        updatedAt: '2026-04-12T00:11:00.000Z',
+      },
+      workingContextEtag: claimed.workingContext.etag,
+    });
+
+    expect(finalized.workingContext.value.activeHeadTurnId).toBeNull();
+    expect(finalized.workingContext.value.latestProcessedSequence).toBe(2);
+    expect(finalized.headTurn.value.state).toBe('completed');
+  });
+
+  it('supersedes head turns without clearing unrelated working-context claims', async () => {
+    const { repositories } = createTestSuite();
+    await repositories.agents.create(createAgent());
+    const createdWorkingContext = await repositories.workingContexts.create(
+      createWorkingContext({
+        activeHeadTurnId: 'hdr_target',
+        activeHeadTurnStartedAt: '2026-04-12T00:10:00.000Z',
+        activeHeadTurnReadThroughSequence: 2,
+      }),
+    );
+    const createdHeadTurn = await repositories.execution.claimHeadTurn({
+      headTurn: createHeadTurn({
+        id: 'hdr_target',
+        readThroughMessageSequence: 2,
+      }),
+      workingContext: createdWorkingContext.value,
+      workingContextEtag: createdWorkingContext.etag,
+    });
+
+    const superseded = await repositories.execution.supersedeHeadTurn({
+      headTurn: {
+        ...createdHeadTurn.headTurn.value,
+        updatedAt: '2026-04-12T00:12:00.000Z',
+        completedAt: '2026-04-12T00:12:00.000Z',
+        staleCheckedAt: '2026-04-12T00:12:00.000Z',
+        state: 'superseded',
+        supersededBySequence: 3,
+      },
+      headTurnEtag: createdHeadTurn.headTurn.etag,
+      workingContext: {
+        ...createdHeadTurn.workingContext.value,
+        activeHeadTurnId: null,
+        activeHeadTurnStartedAt: null,
+        activeHeadTurnReadThroughSequence: null,
+        pendingSupersededBySequence: 3,
+        updatedAt: '2026-04-12T00:12:00.000Z',
+      },
+      workingContextEtag: createdHeadTurn.workingContext.etag,
+    });
+
+    expect(superseded.workingContext?.value.activeHeadTurnId).toBeNull();
+
+    const unrelatedContext = await repositories.workingContexts.replace(
+      {
+        ...superseded.workingContext!.value,
+        activeHeadTurnId: 'hdr_other',
+        activeHeadTurnStartedAt: '2026-04-12T00:13:00.000Z',
+        activeHeadTurnReadThroughSequence: 4,
+        updatedAt: '2026-04-12T00:13:00.000Z',
+      },
+      superseded.workingContext!.etag,
+    );
+    const unrelatedTurn = await repositories.execution.createHeadTurn(
+      createHeadTurn({
+        id: 'hdr_other',
+        readThroughMessageSequence: 4,
+      }),
+    );
+
+    const secondSupersede = await repositories.execution.supersedeHeadTurn({
+      headTurn: {
+        ...unrelatedTurn.value,
+        updatedAt: '2026-04-12T00:14:00.000Z',
+        completedAt: '2026-04-12T00:14:00.000Z',
+        staleCheckedAt: '2026-04-12T00:14:00.000Z',
+        state: 'superseded',
+        supersededBySequence: 5,
+      },
+      headTurnEtag: unrelatedTurn.etag,
+    });
+
+    expect(secondSupersede.workingContext).toBeNull();
+    const reloadedContext = await repositories.workingContexts.get(
+      'agt_persistence',
+      unrelatedContext.value.id,
+    );
+    expect(reloadedContext?.value.activeHeadTurnId).toBe('hdr_other');
   });
 
   it('rejects duplicate create-only writes', async () => {

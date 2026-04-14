@@ -208,6 +208,16 @@ async function seedActiveTelegramChannel(
   };
 }
 
+function createEmptyEffectSummary() {
+  return {
+    approvalRequested: false,
+    memoryOperationRequested: false,
+    sandboxRequested: false,
+    scheduleChangeRequested: false,
+    taskRequested: false,
+  };
+}
+
 function createWebhookHeaders(app: ReturnType<typeof buildApiServer>) {
   return {
     [TELEGRAM_WEBHOOK_SECRET_HEADER]: app.dependencies.config.telegram.webhookSecretToken,
@@ -280,6 +290,9 @@ describe('Telegram channel adapter', () => {
     const messages = await app.dependencies.adapters.repositories.messages.listRecentMessages(
       seeded.agentId,
     );
+    const inboundMessages = messages.filter(
+      (message) => message.value.recordType === 'inbound_message',
+    );
 
     expect(channel?.value).toMatchObject({
       externalChatId: 'chat-42',
@@ -289,8 +302,8 @@ describe('Telegram channel adapter', () => {
       trustedExternalUserHandle: 'trusted-user',
       trustedExternalUserId: 'user-42',
     });
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.value).toMatchObject({
+    expect(inboundMessages).toHaveLength(1);
+    expect(inboundMessages[0]?.value).toMatchObject({
       body: {
         text: 'Check deployment health.',
       },
@@ -301,14 +314,214 @@ describe('Telegram channel adapter', () => {
       sequence: 1,
       trusted: true,
     });
-    expect(messages[0]?.value.correlation.idempotencyKey).toBe(
+    expect(inboundMessages[0]?.value.correlation.idempotencyKey).toBe(
       createInboundMessageIdempotencyKey(seeded.agentId as `agt_${string}`, '1001'),
     );
-    expect(messages[0]?.value.correlation.traceId).not.toBe('trc_malicious');
+    expect(inboundMessages[0]?.value.correlation.traceId).not.toBe('trc_malicious');
     expect(logs.filter((entry) => entry.message === 'trusted_channel_ingress.dispatch')).toHaveLength(1);
     },
     10000,
   );
+
+  it('coalesces rapid trusted messages into one Head turn when debounce is enabled', async () => {
+    const telegram = await startTelegramStub();
+    const logs: Array<{ message: string }> = [];
+    const app = buildApiServer(
+      createTestApiConfig({
+        head: {
+          debounceWindowMs: 25,
+        },
+        telegram: {
+          apiBaseUrl: telegram.baseUrl,
+        },
+      }),
+      {
+        logSink: (entry) => {
+          logs.push({ message: entry.message });
+        },
+      },
+    );
+    apps.push(app);
+
+    const seeded = await seedActiveTelegramChannel(app, {
+      botToken: 'telegram-token',
+      externalChatId: 'chat-42',
+    });
+
+    const firstWebhook = app.inject({
+      headers: createWebhookHeaders(app),
+      method: 'POST',
+      payload: {
+        message: {
+          chat: {
+            id: 'chat-42',
+            type: 'private',
+          },
+          from: {
+            first_name: 'Trusted',
+            id: 'user-42',
+            username: 'trusted-user',
+          },
+          message_id: 90,
+          text: 'First fragment.',
+        },
+        update_id: 1101,
+      },
+      url: `/api/channels/telegram/${seeded.channelId}/webhook`,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const secondWebhook = app.inject({
+      headers: createWebhookHeaders(app),
+      method: 'POST',
+      payload: {
+        message: {
+          chat: {
+            id: 'chat-42',
+            type: 'private',
+          },
+          from: {
+            first_name: 'Trusted',
+            id: 'user-42',
+            username: 'trusted-user',
+          },
+          message_id: 91,
+          text: 'Second fragment.',
+        },
+        update_id: 1102,
+      },
+      url: `/api/channels/telegram/${seeded.channelId}/webhook`,
+    });
+
+    const [firstResponse, secondResponse] = await Promise.all([firstWebhook, secondWebhook]);
+    expect(firstResponse.statusCode).toBe(200);
+    expect(secondResponse.statusCode).toBe(200);
+
+    const sendRequests = telegram.requests.filter((request) =>
+      request.url?.endsWith('/sendMessage'),
+    );
+    expect(sendRequests).toHaveLength(1);
+    expect(sendRequests[0]?.body).toMatchObject({
+      chat_id: 'chat-42',
+      text: 'Stubbed Head reply: Second fragment.',
+    });
+    expect(logs.filter((entry) => entry.message === 'head_runtime.start_turn')).toHaveLength(1);
+  });
+
+  it('suppresses stale replies when a newer trusted message supersedes an in-flight Head turn', async () => {
+    const telegram = await startTelegramStub();
+    const logs: Array<{ message: string }> = [];
+    const app = buildApiServer(
+      createTestApiConfig({
+        head: {
+          debounceWindowMs: 0,
+        },
+        telegram: {
+          apiBaseUrl: telegram.baseUrl,
+        },
+      }),
+      {
+        logSink: (entry) => {
+          logs.push({ message: entry.message });
+        },
+      },
+    );
+    apps.push(app);
+
+    const seeded = await seedActiveTelegramChannel(app, {
+      botToken: 'telegram-token',
+      externalChatId: 'chat-42',
+    });
+    let executeCount = 0;
+    let releaseFirstTurn!: () => void;
+    const firstTurnBlocked = new Promise<void>((resolve) => {
+      releaseFirstTurn = resolve;
+    });
+
+    app.dependencies.adapters.foundry.headRuntime.executeTurn = async (input) => {
+      executeCount += 1;
+      if (executeCount === 1) {
+        await firstTurnBlocked;
+      }
+
+      const replyText =
+        executeCount === 1
+          ? 'Stubbed Head reply: First message.'
+          : 'Stubbed Head reply: Second message.';
+
+      return {
+        assistantText: replyText,
+        completionKind: 'reply',
+        conversationCursor: `stub-conversation:${input.headTurnId}`,
+        effectSummary: createEmptyEffectSummary(),
+        providerConversationId: `stub-conversation:${input.headTurnId}`,
+        providerRunId: `stub-run:${input.headTurnId}`,
+      };
+    };
+
+    const firstWebhook = app.inject({
+      headers: createWebhookHeaders(app),
+      method: 'POST',
+      payload: {
+        message: {
+          chat: {
+            id: 'chat-42',
+            type: 'private',
+          },
+          from: {
+            first_name: 'Trusted',
+            id: 'user-42',
+            username: 'trusted-user',
+          },
+          message_id: 92,
+          text: 'First message.',
+        },
+        update_id: 1201,
+      },
+      url: `/api/channels/telegram/${seeded.channelId}/webhook`,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const secondWebhook = await app.inject({
+      headers: createWebhookHeaders(app),
+      method: 'POST',
+      payload: {
+        message: {
+          chat: {
+            id: 'chat-42',
+            type: 'private',
+          },
+          from: {
+            first_name: 'Trusted',
+            id: 'user-42',
+            username: 'trusted-user',
+          },
+          message_id: 93,
+          text: 'Second message.',
+        },
+        update_id: 1202,
+      },
+      url: `/api/channels/telegram/${seeded.channelId}/webhook`,
+    });
+
+    releaseFirstTurn();
+    const firstResponse = await firstWebhook;
+
+    expect(firstResponse.statusCode).toBe(200);
+    expect(secondWebhook.statusCode).toBe(200);
+
+    const sendRequests = telegram.requests.filter((request) =>
+      request.url?.endsWith('/sendMessage'),
+    );
+    expect(sendRequests).toHaveLength(1);
+    expect(sendRequests[0]?.body).toMatchObject({
+      chat_id: 'chat-42',
+      text: 'Stubbed Head reply: Second message.',
+    });
+    expect(logs.filter((entry) => entry.message === 'trusted_channel_ingress.superseded')).toHaveLength(1);
+  });
 
   it('persists untrusted user mismatches without dispatching trusted ingress', async () => {
     const logs: Array<{ message: string }> = [];

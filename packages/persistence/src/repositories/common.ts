@@ -28,6 +28,14 @@ export function lte(field: string, value: Exclude<QueryValue, boolean>): QueryCo
   };
 }
 
+export function gte(field: string, value: Exclude<QueryValue, boolean>): QueryCondition {
+  return {
+    field,
+    operator: '>=',
+    value,
+  };
+}
+
 export function inList(field: string, value: readonly QueryValue[]): QueryCondition {
   return {
     field,
