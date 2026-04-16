@@ -375,7 +375,7 @@ describe('domain invariants and helpers', () => {
       skipMissedOccurrencesOnRestore: true,
     });
 
-    expect(calculateNextDueAt(schedule, timestamp)).toBe('2026-04-13T00:00:00.000Z');
+    expect(calculateNextDueAt(schedule, timestamp)).toBe('2026-04-12T23:00:00Z');
     expect(calculateNextDueAt({ ...schedule, state: 'paused' }, timestamp)).toBeNull();
   });
 

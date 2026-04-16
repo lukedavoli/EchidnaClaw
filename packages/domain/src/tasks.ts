@@ -48,6 +48,19 @@ export function createQueuedTaskProgressSummary(input: {
   };
 }
 
+export function createDeferredTaskProgressSummary(input: {
+  detail?: string;
+  lastActor?: TaskProgressSummary['lastActor'];
+  requestedOutcome: string;
+}): TaskProgressSummary {
+  return {
+    headline: `Deferred: ${input.requestedOutcome}`,
+    detail: input.detail ?? 'Waiting until the due time.',
+    waitingForUser: false,
+    lastActor: input.lastActor ?? 'head',
+  };
+}
+
 export function withTaskProgressSummary(
   task: Task,
   progressSummary: TaskProgressSummary | null,

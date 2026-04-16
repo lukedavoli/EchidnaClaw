@@ -23,6 +23,7 @@ import {
 } from '@echidna-claw/contracts';
 import {
   createDefaultTaskLaunchState,
+  createDeferredTaskProgressSummary,
   createQueuedTaskProgressSummary,
   createTaskCreationIdempotencyKey,
   createTaskMergeKey,
@@ -46,6 +47,11 @@ type QueueServiceClock = () => string;
 
 export interface TaskQueueService {
   enqueueTask(input: EnqueueTaskRequest): Promise<EnqueueTaskResult>;
+  activateDeferredTask(
+    input: EnqueueTaskRequest & {
+      taskId: string;
+    },
+  ): Promise<EnqueueTaskResult>;
   getTaskStatusSnapshot(input: {
     agentId: string;
     workingContextId: string;
@@ -146,13 +152,17 @@ function mergeQueueDescriptor(
     low: 3,
   };
 
+  const incomingPriorityRank = priorityRank[incoming.priority];
+  const currentPriorityRank = priorityRank[current.priority];
+  if (incomingPriorityRank == null || currentPriorityRank == null) {
+    throw new Error('Unsupported queue priority.');
+  }
+
   return {
     ...current,
     lane: current.lane,
     priority:
-      priorityRank[incoming.priority] < priorityRank[current.priority]
-        ? incoming.priority
-        : current.priority,
+      incomingPriorityRank < currentPriorityRank ? incoming.priority : current.priority,
   };
 }
 
@@ -169,6 +179,24 @@ function buildWorkingContextUpdate(
       : [...workingContext.openTaskIds, taskId],
     updatedAt,
   };
+}
+
+function buildDeferredWorkingContextUpdate(
+  workingContext: WorkingContext,
+  taskId: string,
+  updatedAt: string,
+): WorkingContext {
+  return {
+    ...workingContext,
+    openTaskIds: workingContext.openTaskIds.includes(taskId)
+      ? workingContext.openTaskIds
+      : [...workingContext.openTaskIds, taskId],
+    updatedAt,
+  };
+}
+
+function isFutureDueAt(dueAt: string | null, asOf: string): boolean {
+  return dueAt != null && dueAt > asOf;
 }
 
 function buildInitialRunJournal(input: {
@@ -354,6 +382,7 @@ export function createTaskQueueService(options: {
     async enqueueTask(input: EnqueueTaskRequest): Promise<EnqueueTaskResult> {
       const request = enqueueTaskRequestSchema.parse(input);
       const requestedAt = clock();
+      const shouldDefer = isFutureDueAt(request.dueAt, requestedAt);
       const mergeKey = createTaskMergeKey({
         agentId: request.agentId,
         dueAt: request.dueAt,
@@ -381,7 +410,7 @@ export function createTaskQueueService(options: {
           request.agentId,
           replay.value.resultReference as Task['id'],
         );
-        if (!replayTask || !replayTask.value.activeTaskEnvelopeId || !replayTask.value.currentRunJournalId) {
+        if (!replayTask) {
           throw new ConflictError('The enqueue idempotency record references an incomplete task.');
         }
 
@@ -391,6 +420,7 @@ export function createTaskQueueService(options: {
           startRequest: null,
           taskEnvelopeId: replayTask.value.activeTaskEnvelopeId,
           taskId: replayTask.value.id,
+          taskState: replayTask.value.state,
         });
       }
 
@@ -404,8 +434,171 @@ export function createTaskQueueService(options: {
           candidate.value.type === request.taskType &&
           candidate.value.queue.lane === request.lane &&
           candidate.value.requestedBy.kind === request.requestedBy.kind &&
-          candidate.value.activeApprovalId == null,
+          candidate.value.activeApprovalId == null &&
+          (!shouldDefer || candidate.value.state === 'deferred'),
       );
+
+      if (shouldDefer) {
+        if (!mergeCandidate) {
+          const taskId = createRuntimeIdentifier('tsk');
+          const progressSummary = createDeferredTaskProgressSummary({
+            detail: `Waiting until ${request.dueAt}.`,
+            lastActor: request.requestedBy.kind === 'schedule' ? 'scheduler' : 'head',
+            requestedOutcome: request.requestedOutcome,
+          });
+          const task = withTaskProgressSummary(
+            {
+              id: taskId,
+              recordType: 'task',
+              schemaVersion: 1,
+              createdAt: requestedAt,
+              updatedAt: requestedAt,
+              correlation: {
+                ...request.correlation,
+                taskId,
+              },
+              agentId: request.agentId,
+              type: request.taskType,
+              state: 'deferred',
+              queue: {
+                lane: request.lane,
+                priority: request.priority,
+              },
+              requestedOutcome: request.requestedOutcome,
+              requestedBy: request.requestedBy,
+              dueAt: request.dueAt,
+              stateEnteredAt: requestedAt,
+              scheduleId: request.requestedBy.sourceScheduleId,
+              activeTaskEnvelopeId: null,
+              currentRunJournalId: null,
+              currentHandsRunId: null,
+              activeApprovalId: null,
+              mergeKey,
+              mergedIntoTaskId: null,
+              attemptCount: 1,
+              launchState: createDefaultTaskLaunchState(),
+              progressSummary: null,
+              lastProgressAt: null,
+              lastCheckpointAt: null,
+              cancellationRequestedAt: null,
+              cancellationReason: null,
+              completedAt: null,
+              failedAt: null,
+              cancelledAt: null,
+              artifactIds: [],
+              externalReferences: request.externalReferences,
+              notes: request.notes,
+            },
+            progressSummary,
+            requestedAt,
+          );
+          const workingContext = buildDeferredWorkingContextUpdate(
+            storedWorkingContext.value,
+            taskId,
+            requestedAt,
+          );
+          const idempotencyRecord: IdempotencyRecord = {
+            id: createRuntimeIdentifier('idr'),
+            recordType: 'idempotency_record',
+            schemaVersion: 1,
+            createdAt: requestedAt,
+            updatedAt: requestedAt,
+            correlation: {
+              ...request.correlation,
+              taskId,
+            },
+            agentId: request.agentId,
+            scope: queueingScope,
+            key: queueingIdempotencyKey,
+            status: 'completed',
+            resultReference: taskId,
+            expiresAt: null,
+          };
+          await options.repositories.tasks.createDeferredTask({
+            idempotencyRecord,
+            task,
+            workingContext,
+            workingContextEtag: storedWorkingContext.etag,
+          });
+
+          return enqueueTaskResultSchema.parse({
+            disposition: 'created_new_task',
+            runJournalId: null,
+            startRequest: null,
+            taskEnvelopeId: null,
+            taskId,
+            taskState: 'deferred',
+          });
+        }
+
+        const existingTask = mergeCandidate.value;
+        const earliestDueAt =
+          [existingTask.dueAt, request.dueAt]
+            .filter((value): value is string => value != null)
+            .sort()[0] ?? null;
+        const mergedTask = withTaskProgressSummary(
+          {
+            ...existingTask,
+            updatedAt: requestedAt,
+            queue: mergeQueueDescriptor(existingTask.queue, request),
+            requestedOutcome: request.requestedOutcome,
+            dueAt: earliestDueAt,
+            notes: mergeNotes(existingTask.notes, request.notes),
+            externalReferences: mergeExternalReferences(
+              existingTask.externalReferences,
+              request.externalReferences,
+            ),
+            mergeKey,
+          },
+          createDeferredTaskProgressSummary({
+            detail:
+              earliestDueAt != null
+                ? `Waiting until ${earliestDueAt}.`
+                : 'Waiting until the due time.',
+            lastActor: request.requestedBy.kind === 'schedule' ? 'scheduler' : 'head',
+            requestedOutcome: request.requestedOutcome,
+          }),
+          requestedAt,
+        );
+        const workingContext = buildDeferredWorkingContextUpdate(
+          storedWorkingContext.value,
+          existingTask.id,
+          requestedAt,
+        );
+        const idempotencyRecord: IdempotencyRecord = {
+          id: createRuntimeIdentifier('idr'),
+          recordType: 'idempotency_record',
+          schemaVersion: 1,
+          createdAt: requestedAt,
+          updatedAt: requestedAt,
+          correlation: {
+            ...request.correlation,
+            taskId: existingTask.id,
+          },
+          agentId: request.agentId,
+          scope: queueingScope,
+          key: queueingIdempotencyKey,
+          status: 'completed',
+          resultReference: existingTask.id,
+          expiresAt: null,
+        };
+        await options.repositories.tasks.mergeDeferredTask({
+          idempotencyRecord,
+          task: mergedTask,
+          taskEtag: mergeCandidate.etag,
+          workingContext,
+          workingContextEtag: storedWorkingContext.etag,
+        });
+
+        return enqueueTaskResultSchema.parse({
+          disposition: 'merged_into_existing_task',
+          runJournalId: mergedTask.currentRunJournalId,
+          startRequest: null,
+          taskEnvelopeId: mergedTask.activeTaskEnvelopeId,
+          taskId: existingTask.id,
+          taskState: 'deferred',
+        });
+      }
 
       if (!mergeCandidate) {
         const taskId = createRuntimeIdentifier('tsk');
@@ -549,6 +742,7 @@ export function createTaskQueueService(options: {
           startRequest,
           taskEnvelopeId: taskEnvelope.id,
           taskId,
+          taskState: 'queued',
         });
       }
 
@@ -725,6 +919,197 @@ export function createTaskQueueService(options: {
         startRequest,
         taskEnvelopeId: finalTask.activeTaskEnvelopeId,
         taskId: existingTask.id,
+        taskState: finalTask.state,
+      });
+    },
+
+    async activateDeferredTask(
+      input: EnqueueTaskRequest & {
+        taskId: string;
+      },
+    ): Promise<EnqueueTaskResult> {
+      const request = enqueueTaskRequestSchema
+        .extend({
+          taskId: requestQueuedTaskStartRequestSchema.shape.taskId,
+        })
+        .parse(input);
+      const requestedAt = clock();
+      const queueingIdempotencyKey = createTaskCreationIdempotencyKey(
+        request.agentId,
+        request.requestedOutcome,
+        request.dueAt,
+        request.taskType,
+        request.headTurnId ?? request.taskId,
+      );
+      const queueingScope = getQueueingScope(request);
+      const replay = await options.repositories.idempotency.getByScopeAndKey(
+        request.agentId,
+        queueingScope,
+        queueingIdempotencyKey,
+      );
+
+      if (replay?.value.resultReference) {
+        const replayTask = await options.repositories.tasks.getTask(request.agentId, request.taskId);
+        if (!replayTask) {
+          throw new ConflictError('The deferred-task activation record references a missing task.');
+        }
+
+        return enqueueTaskResultSchema.parse({
+          disposition: replayTask.value.state === 'queued' ? 'requeued_existing_task' : 'merged_into_existing_task',
+          runJournalId: replayTask.value.currentRunJournalId,
+          startRequest: null,
+          taskEnvelopeId: replayTask.value.activeTaskEnvelopeId,
+          taskId: replayTask.value.id,
+          taskState: replayTask.value.state,
+        });
+      }
+
+      const storedTask = await options.repositories.tasks.getTask(request.agentId, request.taskId);
+      if (!storedTask) {
+        throw new NotFoundError('Deferred task not found.');
+      }
+
+      if (storedTask.value.state !== 'deferred') {
+        throw new ConflictError('Only deferred tasks can be activated through the due-task path.');
+      }
+
+      const storedWorkingContext = await getWorkingContext(request.agentId, request.workingContextId);
+      const mergedExternalReferences = mergeExternalReferences(
+        storedTask.value.externalReferences,
+        request.externalReferences,
+      );
+      const mergeKey = createTaskMergeKey({
+        agentId: request.agentId,
+        dueAt: storedTask.value.dueAt,
+        externalReferences: mergedExternalReferences,
+        requestedByKind: storedTask.value.requestedBy.kind,
+        requestedOutcome: request.requestedOutcome,
+        taskType: request.taskType,
+      });
+      const progressSummary = createQueuedTaskProgressSummary({
+        detail: 'Activated after due-task review.',
+        requestedOutcome: request.requestedOutcome,
+      });
+      const runJournal = buildInitialRunJournal({
+        correlation: request.correlation,
+        createdAt: requestedAt,
+        request: {
+          ...request,
+          requestedBy: storedTask.value.requestedBy,
+        },
+        summary: progressSummary,
+        taskId: storedTask.value.id,
+      });
+      const taskEnvelope: TaskEnvelope = {
+        id: createRuntimeIdentifier('env'),
+        recordType: 'task_envelope',
+        schemaVersion: 1,
+        createdAt: requestedAt,
+        updatedAt: requestedAt,
+        correlation: {
+          ...request.correlation,
+          taskId: storedTask.value.id,
+        },
+        taskId: storedTask.value.id,
+        agentId: request.agentId,
+        taskType: request.taskType,
+        requestedOutcome: request.requestedOutcome,
+        requestedBy: storedTask.value.requestedBy,
+        queue: mergeQueueDescriptor(storedTask.value.queue, request),
+        dueAt: storedTask.value.dueAt,
+        sourceHeadTurnId: request.headTurnId,
+        workingContextSummary: request.workingContextSummary,
+        mergeKey,
+        attemptNumber: storedTask.value.attemptCount + 1,
+        supersedesEnvelopeId: storedTask.value.activeTaskEnvelopeId,
+        dispatchIdempotencyKey: null,
+        approvalState: undefined,
+        artifactIds: [],
+        credentialIds: [],
+        externalReferences: mergedExternalReferences,
+        notes: mergeNotes(storedTask.value.notes, request.notes),
+      };
+      const task = withTaskProgressSummary(
+        {
+          ...transitionTaskState(storedTask.value, 'queued', requestedAt),
+          updatedAt: requestedAt,
+          type: request.taskType,
+          queue: taskEnvelope.queue,
+          requestedOutcome: request.requestedOutcome,
+          dueAt: storedTask.value.dueAt,
+          activeTaskEnvelopeId: taskEnvelope.id,
+          currentRunJournalId: runJournal.id,
+          currentHandsRunId: null,
+          mergeKey,
+          attemptCount: storedTask.value.attemptCount + 1,
+          launchState: createDefaultTaskLaunchState(),
+          externalReferences: mergedExternalReferences,
+          notes: taskEnvelope.notes,
+        },
+        progressSummary,
+        requestedAt,
+      );
+      const runJournalEntry = buildRunJournalEntry({
+        agentId: request.agentId,
+        correlation: request.correlation,
+        createdAt: requestedAt,
+        entryKind: 'status',
+        journalId: runJournal.id,
+        message: 'Activated deferred task from a due-task Head turn.',
+        progressSummary,
+        taskId: storedTask.value.id,
+      });
+      const workingContext = buildWorkingContextUpdate(
+        storedWorkingContext.value,
+        storedTask.value.id,
+        requestedAt,
+      );
+      const idempotencyRecord: IdempotencyRecord = {
+        id: createRuntimeIdentifier('idr'),
+        recordType: 'idempotency_record',
+        schemaVersion: 1,
+        createdAt: requestedAt,
+        updatedAt: requestedAt,
+        correlation: {
+          ...request.correlation,
+          taskId: storedTask.value.id,
+        },
+        agentId: request.agentId,
+        scope: queueingScope,
+        key: queueingIdempotencyKey,
+        status: 'completed',
+        resultReference: storedTask.value.id,
+        expiresAt: null,
+      };
+      const activated = await options.repositories.tasks.activateDeferredTask({
+        idempotencyRecord,
+        runJournal,
+        runJournalEntry,
+        task,
+        taskEtag: storedTask.etag,
+        taskEnvelope,
+        workingContext,
+        workingContextEtag: storedWorkingContext.etag,
+      });
+      const startRequest =
+        request.startRequested
+          ? await this.requestQueuedTaskStart({
+              agentId: request.agentId,
+              correlation: {
+                ...request.correlation,
+                taskId: storedTask.value.id,
+              },
+              taskId: storedTask.value.id,
+            })
+          : null;
+
+      return enqueueTaskResultSchema.parse({
+        disposition: 'requeued_existing_task',
+        runJournalId: activated.runJournal.value.id,
+        startRequest,
+        taskEnvelopeId: activated.taskEnvelope?.value.id ?? taskEnvelope.id,
+        taskId: storedTask.value.id,
+        taskState: 'queued',
       });
     },
 
@@ -886,11 +1271,18 @@ export function createTaskQueueService(options: {
           ? storedWorkingContext.value.openTaskIds
           : (await options.repositories.tasks.listOpenTasks(input.agentId)).map((task) => task.value.id);
       const openTasks = await buildStatusItems(openTaskIds, input.agentId);
+      const schedules = await options.repositories.schedules.listByAgent(input.agentId, ['active']);
 
       return taskStatusSnapshotSchema.parse({
         activeTaskId: storedWorkingContext.value.activeTaskId,
         openTasks,
         pendingApprovalIds: storedWorkingContext.value.pendingApprovalIds,
+        schedules: schedules.map((schedule) => ({
+          description: schedule.value.description,
+          nextDueAt: schedule.value.nextDueAt,
+          scheduleId: schedule.value.id,
+          state: schedule.value.state,
+        })),
         workingContextId: storedWorkingContext.value.id,
         workingContextSummary: storedWorkingContext.value.summary,
       });

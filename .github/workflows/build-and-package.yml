@@ -32,6 +32,7 @@ jobs:
       ECHIDNA_IMAGE_REPOSITORY_API: ${{ vars.ECHIDNA_IMAGE_REPOSITORY_API || 'echidna-claw/api' }}
       ECHIDNA_IMAGE_REPOSITORY_HANDS: ${{ vars.ECHIDNA_IMAGE_REPOSITORY_HANDS || 'echidna-claw/hands' }}
       ECHIDNA_IMAGE_REPOSITORY_SANDBOX: ${{ vars.ECHIDNA_IMAGE_REPOSITORY_SANDBOX || 'echidna-claw/sandbox' }}
+      ECHIDNA_IMAGE_REPOSITORY_SCHEDULER: ${{ vars.ECHIDNA_IMAGE_REPOSITORY_SCHEDULER || 'echidna-claw/scheduler' }}
       ECHIDNA_IMAGE_REPOSITORY_WEB: ${{ vars.ECHIDNA_IMAGE_REPOSITORY_WEB || 'echidna-claw/web' }}
 
     steps:

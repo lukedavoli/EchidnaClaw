@@ -7,6 +7,7 @@ import {
   headTurnIdSchema,
   isoDateTimeSchema,
   runJournalIdSchema,
+  scheduleIdSchema,
   taskEnvelopeIdSchema,
   taskIdSchema,
   workingContextIdSchema,
@@ -18,6 +19,7 @@ import {
   queueLaneSchema,
   queuePrioritySchema,
   requestedBySchema,
+  scheduleStateSchema,
   taskLaunchStateSchema,
   taskProgressSummarySchema,
   taskStateSchema,
@@ -83,10 +85,20 @@ export const requestQueuedTaskStartResultSchema = z
 export const enqueueTaskResultSchema = z
   .object({
     disposition: taskMergeDispositionSchema,
-    runJournalId: runJournalIdSchema,
+    runJournalId: runJournalIdSchema.nullable().default(null),
     startRequest: requestQueuedTaskStartResultSchema.nullable(),
-    taskEnvelopeId: taskEnvelopeIdSchema,
+    taskEnvelopeId: taskEnvelopeIdSchema.nullable().default(null),
     taskId: taskIdSchema,
+    taskState: taskStateSchema,
+  })
+  .strict();
+
+export const taskStatusScheduleItemSchema = z
+  .object({
+    description: z.string().trim().min(1),
+    nextDueAt: isoDateTimeSchema.nullable(),
+    scheduleId: scheduleIdSchema,
+    state: scheduleStateSchema,
   })
   .strict();
 
@@ -111,6 +123,7 @@ export const taskStatusSnapshotSchema = z
     activeTaskId: taskIdSchema.nullable(),
     openTasks: z.array(taskStatusItemSchema),
     pendingApprovalIds: z.array(approvalIdSchema),
+    schedules: z.array(taskStatusScheduleItemSchema).default([]),
     workingContextId: workingContextIdSchema,
     workingContextSummary: z.string().trim().default(''),
   })
@@ -122,4 +135,5 @@ export type RequestQueuedTaskStartRequest = z.infer<typeof requestQueuedTaskStar
 export type RequestQueuedTaskStartResult = z.infer<typeof requestQueuedTaskStartResultSchema>;
 export type EnqueueTaskResult = z.infer<typeof enqueueTaskResultSchema>;
 export type TaskStatusItem = z.infer<typeof taskStatusItemSchema>;
+export type TaskStatusScheduleItem = z.infer<typeof taskStatusScheduleItemSchema>;
 export type TaskStatusSnapshot = z.infer<typeof taskStatusSnapshotSchema>;

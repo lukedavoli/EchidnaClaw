@@ -11,6 +11,10 @@ const targets = [
     'apps/sandbox/Dockerfile',
     process.env.ECHIDNA_IMAGE_REPOSITORY_SANDBOX?.trim() || 'echidna-claw/sandbox',
   ],
+  [
+    'apps/scheduler/Dockerfile',
+    process.env.ECHIDNA_IMAGE_REPOSITORY_SCHEDULER?.trim() || 'echidna-claw/scheduler',
+  ],
   ['apps/web/Dockerfile', process.env.ECHIDNA_IMAGE_REPOSITORY_WEB?.trim() || 'echidna-claw/web'],
 ];
 const imageTag = process.env.ECHIDNA_IMAGE_TAG?.trim() || 'local';

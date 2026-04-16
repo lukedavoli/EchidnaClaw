@@ -460,10 +460,26 @@ describe('repository suite contracts', () => {
       'tsk_high',
     ]);
 
-    const queuedForDispatch = await repositories.tasks.listQueuedTasksForDispatch(
+    const dispatchableBeforeDue = await repositories.tasks.listQueuedTasksForDispatch(
       'agt_persistence',
+      '2026-04-12T01:59:59.000Z',
     );
-    expect(queuedForDispatch.map((task) => task.value.id)).toEqual([
+    expect(dispatchableBeforeDue.map((task) => task.value.id)).toEqual(['tsk_user-normal']);
+
+    const dispatchableAfterScheduledDue = await repositories.tasks.listQueuedTasksForDispatch(
+      'agt_persistence',
+      '2026-04-12T02:00:00.000Z',
+    );
+    expect(dispatchableAfterScheduledDue.map((task) => task.value.id)).toEqual([
+      'tsk_user-normal',
+      'tsk_high',
+    ]);
+
+    const dispatchableAfterAllDue = await repositories.tasks.listQueuedTasksForDispatch(
+      'agt_persistence',
+      '2026-04-12T03:00:00.000Z',
+    );
+    expect(dispatchableAfterAllDue.map((task) => task.value.id)).toEqual([
       'tsk_urgent',
       'tsk_user-normal',
       'tsk_high',
@@ -744,39 +760,103 @@ describe('repository suite contracts', () => {
     expect((await repositories.runJournals.listEntries('agt_persistence', createdRunJournal.value.id)).length).toBe(1);
 
     const createdTask = await repositories.tasks.createTask(createTask({ id: 'tsk_schedule-materialized' }));
-    const materialized = await repositories.schedules.materializeDueSchedule({
-      schedule: createSchedule({
+    const createdSchedule = await repositories.schedules.create(
+      createSchedule({
         id: 'sch_materialized',
+        nextDueAt: '2026-04-12T00:00:00.000Z',
+      }),
+    );
+    const materialized = await repositories.schedules.materializeDueOccurrenceTask({
+      schedule: {
+        ...createdSchedule.value,
+        updatedAt: '2026-04-12T00:00:00.000Z',
         lastMaterializedOccurrenceAt: '2026-04-12T00:00:00.000Z',
         nextDueAt: '2026-04-13T00:00:00.000Z',
-      }),
-      scheduleEtag: (
-        await repositories.schedules.create(
-          createSchedule({
-            id: 'sch_materialized',
-            nextDueAt: '2026-04-12T00:00:00.000Z',
-          }),
-        )
-      ).etag,
+      },
+      scheduleEtag: createdSchedule.etag,
       task: createTask({
         id: 'tsk_from-schedule',
+        type: 'scheduled_task',
+        state: 'deferred',
+        queue: { lane: 'scheduled', priority: 'normal' },
         requestedBy: {
           kind: 'schedule',
           sourceScheduleId: 'sch_materialized',
         },
-      }),
-      taskEnvelope: createTaskEnvelope({
-        id: 'env_from-schedule',
-        taskId: 'tsk_from-schedule',
+        dueAt: '2026-04-12T00:00:00.000Z',
+        stateEnteredAt: '2026-04-12T00:00:00.000Z',
+        scheduleId: 'sch_materialized',
+        activeTaskEnvelopeId: null,
+        currentRunJournalId: null,
+        notes: 'Check deployments every day at 9am.',
       }),
       idempotencyRecord: createIdempotencyRecord({
         id: 'idr_schedule',
+        scope: 'scheduler:schedule-occurrence',
         key: 'schedule-occurrence-1',
         resultReference: 'tsk_from-schedule',
+        expiresAt: null,
       }),
     });
 
     expect(materialized.task.value.id).toBe('tsk_from-schedule');
+    expect(materialized.task.value.state).toBe('deferred');
+    expect(materialized.task.value.activeTaskEnvelopeId).toBeNull();
+    expect(materialized.task.value.currentRunJournalId).toBeNull();
+    expect(materialized.schedule.value.lastMaterializedOccurrenceAt).toBe('2026-04-12T00:00:00.000Z');
+    expect(materialized.schedule.value.nextDueAt).toBe('2026-04-13T00:00:00.000Z');
+
+    const deferredTasks = await repositories.tasks.listDeferredTasks('agt_persistence');
+    expect(deferredTasks.map((task) => task.value.id)).toContain('tsk_from-schedule');
+    const dueDeferredTasks = await repositories.tasks.listDueDeferredTasks('2026-04-12T00:00:00.000Z');
+    expect(dueDeferredTasks.map((task) => task.value.id)).toContain('tsk_from-schedule');
+
+    const activated = await repositories.tasks.activateDeferredTask({
+      task: {
+        ...materialized.task.value,
+        state: 'queued',
+        updatedAt: '2026-04-12T00:05:00.000Z',
+        stateEnteredAt: '2026-04-12T00:05:00.000Z',
+        activeTaskEnvelopeId: 'env_from-schedule',
+        currentRunJournalId: 'rjn_from-schedule',
+        attemptCount: 2,
+      },
+      taskEtag: materialized.task.etag,
+      taskEnvelope: createTaskEnvelope({
+        id: 'env_from-schedule',
+        taskId: 'tsk_from-schedule',
+        taskType: 'scheduled_task',
+        requestedBy: {
+          kind: 'schedule',
+          sourceScheduleId: 'sch_materialized',
+        },
+        queue: { lane: 'scheduled', priority: 'normal' },
+        dueAt: '2026-04-12T00:00:00.000Z',
+        notes: 'Check deployments every day at 9am.',
+      }),
+      runJournal: createRunJournal({
+        id: 'rjn_from-schedule',
+        scope: 'scheduler',
+        scopeId: 'sch_materialized',
+        taskId: 'tsk_from-schedule',
+        handsRunId: null,
+      }),
+      runJournalEntry: createRunJournalEntry({
+        id: 'rje_from-schedule',
+        journalId: 'rjn_from-schedule',
+      }),
+      workingContext: {
+        ...createdWorkingContext.value,
+        openTaskIds: ['tsk_from-schedule'],
+        updatedAt: '2026-04-12T00:05:00.000Z',
+      },
+      workingContextEtag: createdWorkingContext.etag,
+    });
+
+    expect(activated.task.value.state).toBe('queued');
+    expect(activated.task.value.activeTaskEnvelopeId).toBe('env_from-schedule');
+    expect(activated.taskEnvelope.value.id).toBe('env_from-schedule');
+    expect(activated.runJournal.value.id).toBe('rjn_from-schedule');
 
     const createdHandsRun = await repositories.execution.claimHandsRun({
       handsRun: createHandsRun({

@@ -17,7 +17,7 @@ const allowedTaskTransitions: Record<TaskState, readonly TaskState[]> = {
   completed: [],
   failed: [],
   cancelled: [],
-  deferred: ['queued', 'cancelled'],
+  deferred: ['queued', 'completed', 'cancelled'],
 };
 
 const allowedApprovalTransitions: Record<ApprovalState, readonly ApprovalState[]> = {

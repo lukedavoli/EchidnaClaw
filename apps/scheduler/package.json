@@ -1,0 +1,19 @@
+{
+  "name": "@echidna-claw/scheduler",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rimraf dist .tsbuildinfo coverage",
+    "dev": "tsx watch src/scheduler.ts",
+    "lint": "eslint .",
+    "start": "tsx src/scheduler.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@echidna-claw/config": "workspace:*",
+    "@echidna-claw/contracts": "workspace:*",
+    "@echidna-claw/observability": "workspace:*"
+  }
+}

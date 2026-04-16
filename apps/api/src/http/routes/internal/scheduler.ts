@@ -1,12 +1,12 @@
-import { schedulerMaterializeDueSchedulesRequestSchema } from '@echidna-claw/contracts';
+import { schedulerProcessDueWorkRequestSchema } from '@echidna-claw/contracts';
 import type { FastifyInstance } from 'fastify';
 
 import { bindRequestCorrelation } from '../../request-context.js';
 
 export function registerSchedulerRuntimeRoutes(app: FastifyInstance): void {
-  app.post('/scheduler/materialize-due-schedules', async (request) => {
-    const body = schedulerMaterializeDueSchedulesRequestSchema.parse(request.body);
+  app.post('/scheduler/process-due-work', async (request) => {
+    const body = schedulerProcessDueWorkRequestSchema.parse(request.body);
     bindRequestCorrelation(request, { correlation: body.correlation });
-    return app.dependencies.services.schedulerRuntimeService.materializeDueSchedules(body);
+    return app.dependencies.services.schedulerRuntimeService.processDueWork(body);
   });
 }

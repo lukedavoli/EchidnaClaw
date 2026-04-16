@@ -54,6 +54,25 @@ describe('createHeadToolCatalog', () => {
       channel: createChannel(),
       headTurn: createHeadTurnFixture(),
       repositoryConfig: loadRepositoryConfig(),
+      scheduleMutationService: {
+        async mutate() {
+          throw new Error('unused');
+        },
+      },
+      taskQueueService: {
+        async activateDeferredTask() {
+          throw new Error('unused');
+        },
+        async enqueueTask() {
+          throw new Error('unused');
+        },
+        async getTaskStatusSnapshot() {
+          throw new Error('unused');
+        },
+        async requestQueuedTaskStart() {
+          throw new Error('unused');
+        },
+      },
       workingContext: createWorkingContext(),
     });
 

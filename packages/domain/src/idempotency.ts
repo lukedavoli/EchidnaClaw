@@ -93,3 +93,7 @@ export function createTaskStartRequestIdempotencyKey(
 export function createScheduleOccurrenceKey(scheduleId: ScheduleId, occurrenceAt: string): string {
   return createKey('occ', [scheduleId, occurrenceAt]);
 }
+
+export function createDueTaskHeadStartKey(taskId: string, dueAt: string): string {
+  return createKey('due', [taskId, dueAt]);
+}

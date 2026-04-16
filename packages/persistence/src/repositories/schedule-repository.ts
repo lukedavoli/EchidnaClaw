@@ -1,39 +1,37 @@
 import {
   idempotencyRecordSchema,
   scheduleSchema,
-  taskEnvelopeSchema,
   taskSchema,
   type AgentId,
   type IdempotencyRecord,
   type Schedule,
   type ScheduleId,
+  type ScheduleState,
   type Task,
-  type TaskEnvelope,
 } from '@echidna-claw/contracts';
 
 import { type StoredRecord } from '../documents/envelope.js';
-import { assertSameAgent, eq, lte, operationalContainerName } from './common.js';
+import { assertSameAgent, eq, inList, lte, operationalContainerName } from './common.js';
 import { type PersistedRecordStore } from './store.js';
 
-export interface ScheduleMaterializationResult {
+export interface ScheduleOccurrenceMaterializationResult {
   idempotencyRecord: StoredRecord<IdempotencyRecord>;
   schedule: StoredRecord<Schedule>;
   task: StoredRecord<Task>;
-  taskEnvelope: StoredRecord<TaskEnvelope>;
 }
 
 export interface ScheduleRepository {
   create(schedule: Schedule): Promise<StoredRecord<Schedule>>;
   get(agentId: AgentId, scheduleId: ScheduleId): Promise<StoredRecord<Schedule> | null>;
   replace(schedule: Schedule, expectedEtag: string): Promise<StoredRecord<Schedule>>;
+  listByAgent(agentId: AgentId, states?: readonly ScheduleState[]): Promise<StoredRecord<Schedule>[]>;
   listDueSchedules(asOf: string, limit?: number): Promise<StoredRecord<Schedule>[]>;
-  materializeDueSchedule(input: {
+  materializeDueOccurrenceTask(input: {
     idempotencyRecord: IdempotencyRecord;
     schedule: Schedule;
     scheduleEtag: string;
     task: Task;
-    taskEnvelope: TaskEnvelope;
-  }): Promise<ScheduleMaterializationResult>;
+  }): Promise<ScheduleOccurrenceMaterializationResult>;
 }
 
 export class DefaultScheduleRepository implements ScheduleRepository {
@@ -51,6 +49,22 @@ export class DefaultScheduleRepository implements ScheduleRepository {
     return this.store.replace(scheduleSchema.parse(schedule), expectedEtag);
   }
 
+  async listByAgent(
+    agentId: AgentId,
+    states?: readonly ScheduleState[],
+  ): Promise<StoredRecord<Schedule>[]> {
+    return this.store.query({
+      containerName: operationalContainerName,
+      partitionKey: agentId,
+      schema: scheduleSchema,
+      where: [
+        eq('recordType', 'schedule'),
+        ...(states && states.length > 0 ? [inList('state', states)] : []),
+      ],
+      orderBy: [{ field: 'nextDueAt', direction: 'asc' }],
+    });
+  }
+
   async listDueSchedules(asOf: string, limit = 100): Promise<StoredRecord<Schedule>[]> {
     return this.store.query({
       containerName: operationalContainerName,
@@ -65,21 +79,20 @@ export class DefaultScheduleRepository implements ScheduleRepository {
     });
   }
 
-  async materializeDueSchedule(input: {
+  async materializeDueOccurrenceTask(input: {
     idempotencyRecord: IdempotencyRecord;
     schedule: Schedule;
     scheduleEtag: string;
     task: Task;
-    taskEnvelope: TaskEnvelope;
-  }): Promise<ScheduleMaterializationResult> {
+  }): Promise<ScheduleOccurrenceMaterializationResult> {
     const schedule = scheduleSchema.parse(input.schedule);
     const task = taskSchema.parse(input.task);
-    const taskEnvelope = taskEnvelopeSchema.parse(input.taskEnvelope);
     const idempotencyRecord = idempotencyRecordSchema.parse(input.idempotencyRecord);
-    assertSameAgent(schedule.agentId, [schedule, task, taskEnvelope, idempotencyRecord]);
+    assertSameAgent(schedule.agentId, [schedule, task, idempotencyRecord]);
 
-    const [storedSchedule, storedTask, storedTaskEnvelope, storedIdempotencyRecord] =
-      await this.store.batch(schedule.agentId, [
+    const [storedSchedule, storedTask, storedIdempotencyRecord] = await this.store.batch(
+      schedule.agentId,
+      [
         {
           kind: 'replace',
           record: schedule,
@@ -91,18 +104,14 @@ export class DefaultScheduleRepository implements ScheduleRepository {
         },
         {
           kind: 'create',
-          record: taskEnvelope,
-        },
-        {
-          kind: 'create',
           record: idempotencyRecord,
         },
-      ]);
+      ],
+    );
 
     return {
       schedule: storedSchedule as StoredRecord<Schedule>,
       task: storedTask as StoredRecord<Task>,
-      taskEnvelope: storedTaskEnvelope as StoredRecord<TaskEnvelope>,
       idempotencyRecord: storedIdempotencyRecord as StoredRecord<IdempotencyRecord>,
     };
   }
