@@ -246,6 +246,7 @@ module sandboxApp '../modules/hosting/sandbox-app.bicep' = {
     tags: normalizedTags
     managedEnvironmentResourceId: containerAppsEnvironment.outputs.id
     identityResourceId: sandboxIdentity.outputs.id
+    identityClientId: sandboxIdentity.outputs.clientId
     containerRegistryLoginServer: containerRegistry.outputs.loginServer
     image: sandboxImage
     cpu: sandboxWorkload.cpu
@@ -309,6 +310,7 @@ module handsJob '../modules/hosting/hands-job.bicep' = {
     tags: normalizedTags
     managedEnvironmentResourceId: containerAppsEnvironment.outputs.id
     identityResourceId: handsIdentity.outputs.id
+    identityClientId: handsIdentity.outputs.clientId
     containerRegistryLoginServer: containerRegistry.outputs.loginServer
     image: handsImage
     cpu: handsJobConfig.cpu
@@ -343,6 +345,7 @@ module schedulerJob '../modules/hosting/scheduler-job.bicep' = {
     tags: normalizedTags
     managedEnvironmentResourceId: containerAppsEnvironment.outputs.id
     identityResourceId: schedulerIdentity.outputs.id
+    identityClientId: schedulerIdentity.outputs.clientId
     containerRegistryLoginServer: containerRegistry.outputs.loginServer
     image: schedulerImage
     cpu: schedulerJobConfig.cpu

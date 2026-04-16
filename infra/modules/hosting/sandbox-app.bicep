@@ -3,6 +3,7 @@ param location string
 param tags object = {}
 param managedEnvironmentResourceId string
 param identityResourceId string
+param identityClientId string
 param containerRegistryLoginServer string
 param image string
 param cpu int
@@ -31,6 +32,10 @@ var envVars = [
   {
     name: 'ECHIDNA_MONITOR_CONNECTION_STRING'
     value: applicationInsightsConnectionString
+  }
+  {
+    name: 'AZURE_CLIENT_ID'
+    value: identityClientId
   }
   {
     name: 'ECHIDNA_SANDBOX_HOST'

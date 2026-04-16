@@ -18,6 +18,7 @@
     "@echidna-claw/config": "workspace:*",
     "@echidna-claw/contracts": "workspace:*",
     "@echidna-claw/domain": "workspace:*",
+    "@echidna-claw/hands-runtime": "workspace:*",
     "@echidna-claw/observability": "workspace:*",
     "@echidna-claw/persistence": "workspace:*",
     "@echidna-claw/prompting": "workspace:*",

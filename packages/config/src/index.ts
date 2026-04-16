@@ -89,6 +89,7 @@ const apiEnvSchema = sharedEnvSchema.extend({
   ECHIDNA_API_REQUEST_LOGGING_ENABLED: optionalBooleanSchema,
   ECHIDNA_HEAD_DEBOUNCE_WINDOW_MS: z.coerce.number().int().min(0).default(750),
   ECHIDNA_SANDBOX_BASE_URL: optionalUrlSchema,
+  ECHIDNA_HANDS_BASE_URL: optionalUrlSchema,
   ECHIDNA_HANDS_JOB_TARGET: optionalNonEmptyStringSchema,
   ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME: optionalNonEmptyStringSchema,
   ECHIDNA_TELEGRAM_API_BASE_URL: optionalUrlSchema,
@@ -110,8 +111,15 @@ const sandboxEnvSchema = sharedEnvSchema.extend({
 });
 
 const handsEnvSchema = sharedEnvSchema.extend({
+  ECHIDNA_API_PUBLIC_BASE_URL: optionalUrlSchema,
   ECHIDNA_HANDS_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(1000).default(30000),
+  ECHIDNA_HANDS_HOST: z.string().min(1).default('127.0.0.1'),
   ECHIDNA_HANDS_LIVENESS_FILE: optionalNonEmptyStringSchema,
+  ECHIDNA_HANDS_PORT: z.coerce.number().int().min(1).max(65535).default(3003),
+  ECHIDNA_HANDS_START_RUN_PAYLOAD: optionalNonEmptyStringSchema,
+  ECHIDNA_HANDS_WORKER_INSTANCE_ID: optionalNonEmptyStringSchema,
+  ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: optionalNonEmptyStringSchema,
+  ECHIDNA_SANDBOX_BASE_URL: optionalUrlSchema,
 });
 
 const sharedCloudRuntimeEnvSchema = z.object({
@@ -182,6 +190,7 @@ export type ApiDependencyConfig = {
     debounceWindowMs: number;
   };
   hands: {
+    baseUrl: string;
     jobTarget: string;
   };
   internalRuntime: {
@@ -227,9 +236,16 @@ export type SandboxConfig = BaseServiceConfig & {
   workspaceRoot: string;
 };
 export type HandsConfig = BaseServiceConfig & {
+  apiBaseUrl: string;
+  internalSandboxBaseUrl: string;
   serviceName: 'hands';
   heartbeatIntervalMs: number;
+  host: string;
+  internalAuthToken: string;
   livenessFile: string;
+  port: number;
+  startRunPayload: string | null;
+  workerInstanceId: string;
 };
 
 type EnvSource = Record<string, string | undefined>;
@@ -335,6 +351,7 @@ function resolveApiDependencyConfig(
       debounceWindowMs: env.ECHIDNA_HEAD_DEBOUNCE_WINDOW_MS,
     },
     hands: {
+      baseUrl: env.ECHIDNA_HANDS_BASE_URL ?? 'http://127.0.0.1:3003',
       jobTarget: env.ECHIDNA_HANDS_JOB_TARGET ?? 'local-hands-job',
     },
     internalRuntime: {
@@ -371,6 +388,7 @@ function resolveApiDependencyConfig(
     },
     head: defaults.head,
     hands: {
+      baseUrl: defaults.hands.baseUrl,
       jobTarget: remoteEnv.ECHIDNA_HANDS_JOB_TARGET,
     },
     internalRuntime: {
@@ -436,10 +454,24 @@ export function loadHandsConfig(source: EnvSource = process.env): HandsConfig {
   }
 
   const env = parseEnv(handsEnvSchema, source);
+  const internalAuthToken =
+    env.ECHIDNA_RUNTIME_MODE === 'local-minimal'
+      ? env.ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN ?? 'local-internal-runtime-token'
+      : parseEnv(sandboxRemoteDependencyEnvSchema, source).ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN;
+
   return {
     ...buildBaseServiceConfig(source, env),
+    apiBaseUrl: env.ECHIDNA_API_PUBLIC_BASE_URL ?? 'http://127.0.0.1:3001',
+    internalSandboxBaseUrl: env.ECHIDNA_SANDBOX_BASE_URL ?? 'http://127.0.0.1:3002',
     serviceName: 'hands',
     heartbeatIntervalMs: env.ECHIDNA_HANDS_HEARTBEAT_INTERVAL_MS,
+    host: env.ECHIDNA_HANDS_HOST,
+    internalAuthToken,
     livenessFile: env.ECHIDNA_HANDS_LIVENESS_FILE ?? resolveDefaultHandsLivenessFile(),
+    port: env.ECHIDNA_HANDS_PORT,
+    startRunPayload: env.ECHIDNA_HANDS_START_RUN_PAYLOAD ?? null,
+    workerInstanceId:
+      env.ECHIDNA_HANDS_WORKER_INSTANCE_ID ??
+      `hands-${env.ECHIDNA_RUNTIME_MODE}-${env.ECHIDNA_HANDS_PORT}`,
   };
 }

@@ -24,6 +24,10 @@
         "packages/domain/src/index.ts",
         "packages/domain/dist/index.d.ts"
       ],
+      "@echidna-claw/hands-runtime": [
+        "packages/hands-runtime/src/index.ts",
+        "packages/hands-runtime/dist/index.d.ts"
+      ],
       "@echidna-claw/observability": [
         "packages/observability/src/index.ts",
         "packages/observability/dist/index.d.ts"

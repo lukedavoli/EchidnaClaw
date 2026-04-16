@@ -19,6 +19,7 @@ export function createTestApiConfig(
       debounceWindowMs: 750,
     },
     hands: {
+      baseUrl: 'http://127.0.0.1:3003',
       jobTarget: 'local-hands-job',
     },
     host: '127.0.0.1',

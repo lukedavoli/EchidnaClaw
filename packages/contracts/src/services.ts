@@ -7,6 +7,10 @@ import {
   type HeadTurnExecutionResult,
 } from './head-runtime.js';
 import {
+  type HandsEnqueueFollowUpRequest,
+  type HandsEnqueueFollowUpResult,
+} from './hands-runtime.js';
+import {
   agentIdSchema,
   approvalIdSchema,
   artifactIdSchema,
@@ -37,6 +41,7 @@ import {
 
 export const handsStartRunRequestSchema = z
   .object({
+    agentId: agentIdSchema,
     taskId: taskIdSchema,
     taskEnvelopeId: taskEnvelopeIdSchema,
     attemptNumber: positiveIntegerSchema,
@@ -51,6 +56,17 @@ export const handsReleaseForUserRequestSchema = z
     releasedAt: isoDateTimeSchema,
     approvalId: approvalIdSchema.optional(),
     correlation: correlationMetadataSchema,
+  })
+  .strict();
+
+export const handsDispatchResultSchema = z
+  .object({
+    acceptedAt: isoDateTimeSchema,
+    dispatchIdempotencyKey: nonEmptyStringSchema,
+    dispatchMode: z.enum(['in_process', 'http', 'one_shot']),
+    dispatchReference: nonEmptyStringSchema,
+    taskEnvelopeId: taskEnvelopeIdSchema,
+    taskId: taskIdSchema,
   })
   .strict();
 
@@ -260,6 +276,7 @@ export const channelActionResponseSchema = z.discriminatedUnion('kind', [
 
 export type HandsStartRunRequest = z.infer<typeof handsStartRunRequestSchema>;
 export type HandsReleaseForUserRequest = z.infer<typeof handsReleaseForUserRequestSchema>;
+export type HandsDispatchResult = z.infer<typeof handsDispatchResultSchema>;
 export type SandboxCreateSessionRequest = z.infer<typeof sandboxCreateSessionRequestSchema>;
 export type SandboxProvisionSessionRequest = z.infer<typeof sandboxProvisionSessionRequestSchema>;
 export type SandboxShell = z.infer<typeof sandboxShellSchema>;
@@ -297,9 +314,9 @@ export interface HeadService {
 }
 
 export interface HandsService {
-  startRun(input: HandsStartRunRequest): Promise<HandsRun>;
+  enqueueFollowUpTasks(input: HandsEnqueueFollowUpRequest): Promise<HandsEnqueueFollowUpResult>;
   releaseForUser(input: HandsReleaseForUserRequest): Promise<HandsRun>;
-  completeTask(task: Task): Promise<Task>;
+  startRun(input: HandsStartRunRequest): Promise<HandsDispatchResult>;
 }
 
 export interface SandboxService {

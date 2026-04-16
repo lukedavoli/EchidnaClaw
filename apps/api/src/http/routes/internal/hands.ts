@@ -1,4 +1,5 @@
 import {
+  handsEnqueueFollowUpRequestSchema,
   handsReleaseForUserRequestSchema,
   handsStartRunRequestSchema,
 } from '@echidna-claw/contracts';
@@ -7,6 +8,12 @@ import type { FastifyInstance } from 'fastify';
 import { bindRequestCorrelation } from '../../request-context.js';
 
 export function registerHandsRuntimeRoutes(app: FastifyInstance): void {
+  app.post('/hands/follow-up-tasks', async (request) => {
+    const body = handsEnqueueFollowUpRequestSchema.parse(request.body);
+    bindRequestCorrelation(request, { correlation: body.correlation });
+    return app.dependencies.services.handsRuntimeService.enqueueFollowUpTasks(body);
+  });
+
   app.post('/hands/start-run', async (request) => {
     const body = handsStartRunRequestSchema.parse(request.body);
     bindRequestCorrelation(request, { correlation: body.correlation });

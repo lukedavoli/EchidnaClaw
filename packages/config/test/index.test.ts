@@ -33,6 +33,7 @@ describe('@echidna-claw/config', () => {
     expect(config.head.debounceWindowMs).toBe(750);
     expect(config.telegram.webhookSecretToken).toBe('local-telegram-webhook-token');
     expect(config.internalRuntime.authToken).toBe('local-internal-runtime-token');
+    expect(config.hands.baseUrl).toBe('http://127.0.0.1:3003');
     expect(config.observability.requestLoggingEnabled).toBe(true);
   });
 
@@ -91,6 +92,12 @@ describe('@echidna-claw/config', () => {
     const config = loadHandsConfig({});
 
     expect(config.runtimeMode).toBe('local-minimal');
+    expect(config.apiBaseUrl).toBe('http://127.0.0.1:3001');
+    expect(config.host).toBe('127.0.0.1');
+    expect(config.port).toBe(3003);
+    expect(config.internalAuthToken).toBe('local-internal-runtime-token');
+    expect(config.internalSandboxBaseUrl).toBe('http://127.0.0.1:3002');
     expect(config.livenessFile).toContain('hands-liveness.json');
+    expect(config.startRunPayload).toBeNull();
   });
 });

@@ -16,8 +16,6 @@ import type { HandsJobTriggerAdapter } from '../../src/adapters/jobs/index.js';
 import { createTestApiConfig } from '../../src/testing/fixtures/api-config.js';
 import { createHeadRuntimeService } from '../../src/services/runtime/head-runtime-service.js';
 import { createTaskQueueService } from '../../src/services/runtime/task-queue-service.js';
-import { NotImplementedYetError } from '../../src/http/errors.js';
-
 function createEmptyEffectSummary() {
   return {
     taskRequested: false,
@@ -186,11 +184,18 @@ function createToolCallingRuntime(
 function createHandsJobStub(startRunCalls: Array<Record<string, unknown>>): HandsJobTriggerAdapter {
   return {
     async releaseForUser() {
-      throw new NotImplementedYetError('Release is not needed in this test.');
+      throw new Error('Release is not needed in this test.');
     },
     async startRun(input) {
       startRunCalls.push(input);
-      throw new NotImplementedYetError('Hands job starts are reserved for Step 13.');
+      return {
+        acceptedAt: '2026-04-12T00:00:00.000Z',
+        dispatchIdempotencyKey: input.dispatchIdempotencyKey,
+        dispatchMode: 'in_process',
+        dispatchReference: input.dispatchIdempotencyKey,
+        taskEnvelopeId: input.taskEnvelopeId,
+        taskId: input.taskId,
+      };
     },
   };
 }
@@ -297,7 +302,7 @@ describe('task queue runtime integration', () => {
     expect(openTasks).toHaveLength(1);
     expect(openTasks[0].value.activeTaskEnvelopeId).toMatch(/^env_/);
     expect(openTasks[0].value.currentRunJournalId).toMatch(/^rjn_/);
-    expect(openTasks[0].value.launchState.status).toBe('failed');
+    expect(openTasks[0].value.launchState.status).toBe('requested');
 
     const storedContext = await services.repositories.workingContexts.get(
       seeded.agentId,

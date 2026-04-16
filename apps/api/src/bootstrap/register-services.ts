@@ -22,7 +22,21 @@ export function registerServices(options: {
   config: ApiRuntimeConfig;
   loggerFactory: LoggerFactory;
 }): ApiDependencies {
-  const adapters = createExternalAdapters(options.config);
+  let taskQueueServiceRef:
+    | {
+        enqueueTask: ApiDependencies['services']['taskQueueService']['enqueueTask'];
+      }
+    | null = null;
+  const adapters = createExternalAdapters(options.config, {
+    getTaskQueueService: () => {
+      if (taskQueueServiceRef == null) {
+        throw new Error('Task queue service has not been initialized yet.');
+      }
+
+      return taskQueueServiceRef;
+    },
+    runtimeLogger: options.loggerFactory.createLogger({ service: 'hands_runtime_dispatch' }),
+  });
   const appLogger = options.loggerFactory.createLogger({ component: 'api_app' });
   const repositoryConfig = loadRepositoryConfig();
   const approvalCallbackService = createApprovalActionDispatcher({
@@ -38,6 +52,7 @@ export function registerServices(options: {
     logger: options.loggerFactory.createLogger({ service: 'task_queue' }),
     repositories: adapters.adapters.repositories,
   });
+  taskQueueServiceRef = taskQueueService;
   const workingContextSummaryService = createWorkingContextSummaryService({
     logger: options.loggerFactory.createLogger({ service: 'working_context_summary' }),
     summarizer: adapters.adapters.foundry.workingContextSummarizer,
@@ -74,6 +89,8 @@ export function registerServices(options: {
       handsRuntimeService: createHandsRuntimeService({
         handsJobs: adapters.adapters.handsJobs,
         logger: options.loggerFactory.createLogger({ service: 'hands_runtime' }),
+        repositories: adapters.adapters.repositories,
+        taskQueueService,
       }),
       outboundMessagingService,
       headRuntimeService,

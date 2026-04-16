@@ -234,7 +234,6 @@ function buildRunJournalEntry(input: {
     progressSummaryPatch: input.progressSummary,
     artifactIds: [],
     approvalId: null,
-    handsActionSummary: undefined,
   };
 }
 
@@ -482,6 +481,9 @@ export function createTaskQueueService(options: {
             launchState: createDefaultTaskLaunchState(),
             progressSummary: null,
             lastProgressAt: null,
+            lastCheckpointAt: null,
+            cancellationRequestedAt: null,
+            cancellationReason: null,
             completedAt: null,
             failedAt: null,
             cancelledAt: null,
@@ -805,7 +807,8 @@ export function createTaskQueueService(options: {
       });
 
       try {
-        const handsRun = await options.handsJobs.startRun({
+        const handsDispatch = await options.handsJobs.startRun({
+          agentId: request.agentId,
           attemptNumber: storedEnvelope.value.attemptNumber,
           correlation: {
             ...request.correlation,
@@ -821,7 +824,7 @@ export function createTaskQueueService(options: {
             ...reserved.idempotencyRecord.value,
             status: 'completed',
             updatedAt: clock(),
-            resultReference: handsRun.id,
+            resultReference: handsDispatch.dispatchReference,
           },
           idempotencyRecordEtag: reserved.idempotencyRecord.etag,
           task: reserved.task.value,

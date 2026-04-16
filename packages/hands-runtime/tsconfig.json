@@ -8,22 +8,16 @@
   },
   "references": [
     {
-      "path": "../../packages/config"
+      "path": "../contracts"
     },
     {
-      "path": "../../packages/contracts"
+      "path": "../domain"
     },
     {
-      "path": "../../packages/domain"
+      "path": "../observability"
     },
     {
-      "path": "../../packages/hands-runtime"
-    },
-    {
-      "path": "../../packages/observability"
-    },
-    {
-      "path": "../../packages/persistence"
+      "path": "../persistence"
     }
   ],
   "include": [

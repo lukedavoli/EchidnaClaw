@@ -1,11 +1,15 @@
 import {
   handsRunSchema,
   headTurnSchema,
+  runJournalEntrySchema,
+  runJournalSchema,
   sandboxSessionSchema,
   taskSchema,
   type AgentId,
   type HandsRun,
   type HandsRunId,
+  type RunJournal,
+  type RunJournalEntry,
   type HeadTurn,
   type HeadTurnId,
   type SandboxSession,
@@ -36,6 +40,14 @@ export interface HeadTurnClaimResult {
   workingContext: StoredRecord<WorkingContext>;
 }
 
+export interface HandsRunExecutionGraphResult {
+  handsRun: StoredRecord<HandsRun>;
+  runJournal: StoredRecord<RunJournal>;
+  runJournalEntry?: StoredRecord<RunJournalEntry>;
+  task: StoredRecord<Task>;
+  workingContext: StoredRecord<WorkingContext>;
+}
+
 export interface ExecutionRepository {
   createHeadTurn(headTurn: HeadTurn): Promise<StoredRecord<HeadTurn>>;
   findHeadTurn(headTurnId: HeadTurnId): Promise<StoredRecord<HeadTurn> | null>;
@@ -60,14 +72,38 @@ export interface ExecutionRepository {
     workingContextEtag?: string;
   }): Promise<HeadTurnClaimResult | { headTurn: StoredRecord<HeadTurn>; workingContext: null }>;
   createHandsRun(handsRun: HandsRun): Promise<StoredRecord<HandsRun>>;
+  findHandsRunByDispatchKey(
+    agentId: AgentId,
+    dispatchIdempotencyKey: string,
+  ): Promise<StoredRecord<HandsRun> | null>;
   getHandsRun(agentId: AgentId, handsRunId: HandsRunId): Promise<StoredRecord<HandsRun> | null>;
   listActiveHandsRuns(agentId: AgentId): Promise<StoredRecord<HandsRun>[]>;
   replaceHandsRun(handsRun: HandsRun, expectedEtag: string): Promise<StoredRecord<HandsRun>>;
+  claimTaskForHandsRun(input: {
+    handsRun: HandsRun;
+    runJournal: RunJournal;
+    runJournalEntry: RunJournalEntry;
+    task: Task;
+    taskEtag: string;
+    workingContext: WorkingContext;
+    workingContextEtag: string;
+  }): Promise<HandsRunExecutionGraphResult>;
   claimHandsRun(input: {
     handsRun: HandsRun;
     task: Task;
     taskEtag: string;
   }): Promise<HandsRunClaimResult>;
+  updateHandsRunExecution(input: {
+    handsRun: HandsRun;
+    handsRunEtag: string;
+    runJournal: RunJournal;
+    runJournalEtag: string;
+    runJournalEntry?: RunJournalEntry;
+    task: Task;
+    taskEtag: string;
+    workingContext: WorkingContext;
+    workingContextEtag: string;
+  }): Promise<HandsRunExecutionGraphResult>;
   releaseHandsRun(input: {
     handsRun: HandsRun;
     handsRunEtag: string;
@@ -227,6 +263,25 @@ export class DefaultExecutionRepository implements ExecutionRepository {
     return this.store.create(handsRunSchema.parse(handsRun));
   }
 
+  async findHandsRunByDispatchKey(
+    agentId: AgentId,
+    dispatchIdempotencyKey: string,
+  ): Promise<StoredRecord<HandsRun> | null> {
+    const results = await this.store.query({
+      containerName: operationalContainerName,
+      partitionKey: agentId,
+      schema: handsRunSchema,
+      where: [
+        eq('recordType', 'hands_run'),
+        eq('dispatchIdempotencyKey', dispatchIdempotencyKey),
+      ],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+      limit: 1,
+    });
+
+    return results[0] ?? null;
+  }
+
   async getHandsRun(
     agentId: AgentId,
     handsRunId: HandsRunId,
@@ -246,6 +301,57 @@ export class DefaultExecutionRepository implements ExecutionRepository {
 
   async replaceHandsRun(handsRun: HandsRun, expectedEtag: string): Promise<StoredRecord<HandsRun>> {
     return this.store.replace(handsRunSchema.parse(handsRun), expectedEtag);
+  }
+
+  async claimTaskForHandsRun(input: {
+    handsRun: HandsRun;
+    runJournal: RunJournal;
+    runJournalEntry: RunJournalEntry;
+    task: Task;
+    taskEtag: string;
+    workingContext: WorkingContext;
+    workingContextEtag: string;
+  }): Promise<HandsRunExecutionGraphResult> {
+    const handsRun = handsRunSchema.parse(input.handsRun);
+    const runJournal = runJournalSchema.parse(input.runJournal);
+    const runJournalEntry = runJournalEntrySchema.parse(input.runJournalEntry);
+    const task = taskSchema.parse(input.task);
+    const workingContext = workingContextSchema.parse(input.workingContext);
+    assertSameAgent(handsRun.agentId, [handsRun, runJournal, runJournalEntry, task, workingContext]);
+
+    const [storedWorkingContext, storedTask, storedHandsRun, storedRunJournal, storedRunJournalEntry] =
+      await this.store.batch(handsRun.agentId, [
+        {
+          kind: 'replace',
+          record: workingContext,
+          expectedEtag: input.workingContextEtag,
+        },
+        {
+          kind: 'replace',
+          record: task,
+          expectedEtag: input.taskEtag,
+        },
+        {
+          kind: 'create',
+          record: handsRun,
+        },
+        {
+          kind: 'create',
+          record: runJournal,
+        },
+        {
+          kind: 'create',
+          record: runJournalEntry,
+        },
+      ]);
+
+    return {
+      handsRun: storedHandsRun as StoredRecord<HandsRun>,
+      runJournal: storedRunJournal as StoredRecord<RunJournal>,
+      runJournalEntry: storedRunJournalEntry as StoredRecord<RunJournalEntry>,
+      task: storedTask as StoredRecord<Task>,
+      workingContext: storedWorkingContext as StoredRecord<WorkingContext>,
+    };
   }
 
   async claimHandsRun(input: {
@@ -272,6 +378,77 @@ export class DefaultExecutionRepository implements ExecutionRepository {
     return {
       task: storedTask as StoredRecord<Task>,
       handsRun: storedHandsRun as StoredRecord<HandsRun>,
+    };
+  }
+
+  async updateHandsRunExecution(input: {
+    handsRun: HandsRun;
+    handsRunEtag: string;
+    runJournal: RunJournal;
+    runJournalEtag: string;
+    runJournalEntry?: RunJournalEntry;
+    task: Task;
+    taskEtag: string;
+    workingContext: WorkingContext;
+    workingContextEtag: string;
+  }): Promise<HandsRunExecutionGraphResult> {
+    const handsRun = handsRunSchema.parse(input.handsRun);
+    const runJournal = runJournalSchema.parse(input.runJournal);
+    const runJournalEntry = input.runJournalEntry
+      ? runJournalEntrySchema.parse(input.runJournalEntry)
+      : undefined;
+    const task = taskSchema.parse(input.task);
+    const workingContext = workingContextSchema.parse(input.workingContext);
+    assertSameAgent(handsRun.agentId, [
+      handsRun,
+      runJournal,
+      task,
+      workingContext,
+      ...(runJournalEntry ? [runJournalEntry] : []),
+    ]);
+
+    const operations = [
+      {
+        kind: 'replace' as const,
+        record: workingContext,
+        expectedEtag: input.workingContextEtag,
+      },
+      {
+        kind: 'replace' as const,
+        record: task,
+        expectedEtag: input.taskEtag,
+      },
+      {
+        kind: 'replace' as const,
+        record: handsRun,
+        expectedEtag: input.handsRunEtag,
+      },
+      {
+        kind: 'replace' as const,
+        record: runJournal,
+        expectedEtag: input.runJournalEtag,
+      },
+      ...(runJournalEntry
+        ? [
+            {
+              kind: 'create' as const,
+              record: runJournalEntry,
+            },
+          ]
+        : []),
+    ];
+    const results = await this.store.batch(handsRun.agentId, operations);
+
+    return {
+      handsRun: results[2] as StoredRecord<HandsRun>,
+      runJournal: results[3] as StoredRecord<RunJournal>,
+      ...(runJournalEntry
+        ? {
+            runJournalEntry: results[4] as StoredRecord<RunJournalEntry>,
+          }
+        : {}),
+      task: results[1] as StoredRecord<Task>,
+      workingContext: results[0] as StoredRecord<WorkingContext>,
     };
   }
 

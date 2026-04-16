@@ -83,6 +83,9 @@ importers:
       '@echidna-claw/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@echidna-claw/hands-runtime':
+        specifier: workspace:*
+        version: link:../../packages/hands-runtime
       '@echidna-claw/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -110,6 +113,27 @@ importers:
       '@echidna-claw/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@echidna-claw/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@echidna-claw/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@echidna-claw/hands-runtime':
+        specifier: workspace:*
+        version: link:../../packages/hands-runtime
+      '@echidna-claw/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@echidna-claw/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
+      fastify:
+        specifier: ^5.2.1
+        version: 5.8.4
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
 
   apps/sandbox:
     dependencies:
@@ -204,6 +228,21 @@ importers:
       '@echidna-claw/contracts':
         specifier: workspace:*
         version: link:../contracts
+
+  packages/hands-runtime:
+    dependencies:
+      '@echidna-claw/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@echidna-claw/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@echidna-claw/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@echidna-claw/persistence':
+        specifier: workspace:*
+        version: link:../persistence
 
   packages/observability:
     dependencies:

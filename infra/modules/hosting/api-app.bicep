@@ -36,6 +36,10 @@ var envVars = [
     value: applicationInsightsConnectionString
   }
   {
+    name: 'AZURE_CLIENT_ID'
+    value: identityClientId
+  }
+  {
     name: 'ECHIDNA_API_HOST'
     value: '0.0.0.0'
   }
