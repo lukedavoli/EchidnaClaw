@@ -43,6 +43,7 @@ export function createLocalHeadRuntimeAdapter(): HeadRuntimeAdapter {
         assistantText,
         completionKind: assistantText ? 'reply' : 'no_op',
         conversationCursor: input.conversationCursor ?? `stub-conversation:${input.headTurnId}`,
+        deferredDirectives: [],
         effectSummary: createEmptyEffectSummary(),
         providerConversationId: input.conversationCursor ?? `stub-conversation:${input.headTurnId}`,
         providerRunId: `stub-run:${input.headTurnId}`,

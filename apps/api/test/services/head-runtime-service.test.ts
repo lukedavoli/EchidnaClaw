@@ -100,6 +100,30 @@ async function executeTrustedTurn(input: {
     config: {
       runtimeMode: input.runtimeMode,
     } as never,
+    conversationMemoryService: {
+      async commitWrites() {
+        return { updateIds: [] };
+      },
+      createWriteCandidate() {
+        throw new Error('unused');
+      },
+      async loadTurnContext() {
+        return {
+          baselineItems: [],
+          binding: null,
+          lastSearchId: null,
+          promptMemories: [],
+          readAllowed: false,
+          writeAllowed: false,
+        };
+      },
+      async read() {
+        return {
+          memories: [],
+          searchId: null,
+        };
+      },
+    },
     headRuntime: {
       async cancelTurn(): Promise<void> {},
       async executeTurn(turn) {
@@ -109,6 +133,7 @@ async function executeTrustedTurn(input: {
           assistantText: 'Ready.',
           completionKind: 'reply',
           conversationCursor: 'conv_test',
+          deferredDirectives: [],
           effectSummary: {
             approvalRequested: false,
             credentialRequested: false,

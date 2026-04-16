@@ -97,12 +97,20 @@ param foundry = {
   modelFormat: 'OpenAI'
   modelName: 'gpt-5.4-mini'
   modelVersion: '2026-03-17'
+  memoryEmbeddingDeploymentName: 'dep-text-embedding-3-small-dev'
+  memoryEmbeddingDeploymentSkuName: 'GlobalStandard'
+  memoryEmbeddingDeploymentCapacity: 1
+  memoryEmbeddingModelFormat: 'OpenAI'
+  memoryEmbeddingModelName: 'text-embedding-3-small'
+  memoryEmbeddingModelVersion: '1'
   memoryStoreEndpointOrId: ''
   attachEndpoint: ''
   attachAccountResourceId: ''
   attachProjectResourceId: ''
   attachMemoryStoreEndpointOrId: ''
   attachDeploymentName: ''
+  attachMemoryChatDeploymentName: ''
+  attachMemoryEmbeddingDeploymentName: ''
 }
 
 param publicEdgeConfig = {

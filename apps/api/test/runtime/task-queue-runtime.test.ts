@@ -16,6 +16,7 @@ import type { HandsJobTriggerAdapter } from '../../src/adapters/jobs/index.js';
 import { createTestApiConfig } from '../../src/testing/fixtures/api-config.js';
 import { createHeadRuntimeService } from '../../src/services/runtime/head-runtime-service.js';
 import { createTaskQueueService } from '../../src/services/runtime/task-queue-service.js';
+
 function createEmptyEffectSummary() {
   return {
     taskRequested: false,
@@ -171,6 +172,7 @@ function createToolCallingRuntime(
         assistantText: toolResult.outputText,
         completionKind: 'reply',
         conversationCursor: `test-conversation:${input.headTurnId}`,
+        deferredDirectives: toolResult.deferredDirectives ?? [],
         effectSummary: {
           ...createEmptyEffectSummary(),
           ...toolResult.effectSummaryPatch,
@@ -253,6 +255,30 @@ function createServices(toolName: string, args: Record<string, unknown>) {
     taskQueueService,
     headRuntimeService: createHeadRuntimeService({
       config: createTestApiConfig(),
+      conversationMemoryService: {
+        async commitWrites() {
+          return { updateIds: [] };
+        },
+        createWriteCandidate() {
+          throw new Error('unused');
+        },
+        async loadTurnContext() {
+          return {
+            baselineItems: [],
+            binding: null,
+            lastSearchId: null,
+            promptMemories: [],
+            readAllowed: false,
+            writeAllowed: false,
+          };
+        },
+        async read() {
+          return {
+            memories: [],
+            searchId: null,
+          };
+        },
+      },
       headRuntime: createToolCallingRuntime(toolName, args),
       logger: loggerFactory.createLogger({ service: 'head_runtime_test' }),
       repositories: repositoryBundle.repositories,

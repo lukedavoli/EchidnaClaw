@@ -9,7 +9,13 @@ import type {
 } from 'openai/resources/responses/responses';
 
 import { DependencyUnavailableError } from '../../http/errors.js';
-import type { FoundryHeadTurnResult, HeadRuntimeAdapter, PreparedHeadTool, PreparedHeadTurnInput } from './types.js';
+import type {
+  DeferredHeadDirective,
+  FoundryHeadTurnResult,
+  HeadRuntimeAdapter,
+  PreparedHeadTool,
+  PreparedHeadTurnInput,
+} from './types.js';
 
 type OpenAIClient = ReturnType<AIProjectClient['getOpenAIClient']>;
 
@@ -95,10 +101,12 @@ async function resolveFunctionCalls(options: {
   tools: readonly PreparedHeadTool[];
   turn: PreparedHeadTurnInput;
 }): Promise<{
+  deferredDirectives: DeferredHeadDirective[];
   effectSummary: HeadEffectSummary;
   finalResponse: Response;
   hadFunctionCalls: boolean;
 }> {
+  const deferredDirectives: DeferredHeadDirective[] = [];
   const effectSummary = createEmptyEffectSummary();
   const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool]));
   let hadFunctionCalls = false;
@@ -107,6 +115,7 @@ async function resolveFunctionCalls(options: {
   for (let round = 0; round < MAX_FUNCTION_TOOL_ROUNDS; round += 1) {
     if (!hasFunctionCall(response)) {
       return {
+        deferredDirectives,
         effectSummary,
         finalResponse: response,
         hadFunctionCalls,
@@ -156,6 +165,7 @@ async function resolveFunctionCalls(options: {
       try {
         const result = await tool.execute(args);
         mergeEffectSummary(effectSummary, result.effectSummaryPatch);
+        deferredDirectives.push(...(result.deferredDirectives ?? []));
         outputs.push({
           call_id: item.call_id,
           output: JSON.stringify({
@@ -253,6 +263,7 @@ export function createLiveHeadRuntimeAdapter(options: {
       }
 
       const {
+        deferredDirectives,
         effectSummary,
         finalResponse,
         hadFunctionCalls,
@@ -277,6 +288,7 @@ export function createLiveHeadRuntimeAdapter(options: {
           hadFunctionCalls,
         }),
         conversationCursor: finalResponse.conversation?.id ?? conversation,
+        deferredDirectives,
         effectSummary,
         providerConversationId: finalResponse.conversation?.id ?? conversation,
         providerRunId: finalResponse.id,

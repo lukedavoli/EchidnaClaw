@@ -16,10 +16,16 @@ import {
 } from './head-tool-handlers/change-schedule.js';
 import { handleCreateTask } from './head-tool-handlers/create-task.js';
 import { handleDescribeCapabilities } from './head-tool-handlers/describe-capabilities.js';
+import { handleMemoryRead } from './head-tool-handlers/memory-read.js';
+import { handleMemoryWrite } from './head-tool-handlers/memory-write.js';
 import { handleReadStatus } from './head-tool-handlers/read-status.js';
 import { handleRequestApproval } from './head-tool-handlers/request-approval.js';
 import { handleRequestCredential } from './head-tool-handlers/request-credential.js';
 import type { ApprovalLifecycleService } from './approval-lifecycle-service.js';
+import type {
+  ConversationMemoryContext,
+  ConversationMemoryService,
+} from './conversation-memory-service.js';
 import type { CredentialLifecycleService } from './credential-lifecycle-service.js';
 import type { ScheduleMutationService } from './schedule-mutation-service.js';
 import type { TaskQueueService } from './task-queue-service.js';
@@ -67,8 +73,10 @@ export function createHeadToolCatalog(input: {
   agent: Agent;
   approvalLifecycleService: ApprovalLifecycleService;
   channel: Channel;
+  conversationMemoryService: ConversationMemoryService;
   credentialLifecycleService: CredentialLifecycleService;
   headTurn: HeadTurn;
+  memoryContext: ConversationMemoryContext;
   repositoryConfig: RepositoryConfig;
   scheduleMutationService: ScheduleMutationService;
   taskQueueService: TaskQueueService;
@@ -225,7 +233,14 @@ export function createHeadToolCatalog(input: {
     },
     {
       description: 'Read long-term memory for the current user or task.',
-      enabled: false,
+      enabled: input.memoryContext.readAllowed,
+      execute: async (args) =>
+        handleMemoryRead({
+          args,
+          context: input.memoryContext,
+          conversationMemoryService: input.conversationMemoryService,
+          repositoryConfig: input.repositoryConfig,
+        }),
       inputSchema: {
         type: 'object',
         properties: {
@@ -238,13 +253,29 @@ export function createHeadToolCatalog(input: {
     },
     {
       description: 'Write durable long-term memory for the current user or task.',
-      enabled: false,
+      enabled: input.memoryContext.writeAllowed,
+      execute: async (args) =>
+        handleMemoryWrite({
+          args,
+          context: input.memoryContext,
+          conversationMemoryService: input.conversationMemoryService,
+        }),
       inputSchema: {
         type: 'object',
         properties: {
-          memory: { type: 'string' },
+          category: {
+            type: 'string',
+            enum: [
+              'preference',
+              'standing_instruction',
+              'durable_fact',
+              'recurring_pattern',
+              'agent_guidance',
+            ],
+          },
+          text: { type: 'string' },
         },
-        required: ['memory'],
+        required: ['category', 'text'],
         additionalProperties: false,
       },
       name: 'memory_write',

@@ -65,6 +65,8 @@ The top-level template emits the values later steps need for runtime wiring:
 - `foundryEndpoint`
 - `foundryMemoryStoreEndpointOrId`
 - `defaultModelDeploymentName`
+- `memoryChatDeploymentName`
+- `memoryEmbeddingDeploymentName`
 - `workloadIdentities`
 - `handsJobName`
 - `schedulerJobName`
@@ -79,5 +81,7 @@ The top-level template emits the values later steps need for runtime wiring:
 ## Foundry Notes
 
 - `create` mode is the default in the committed parameter files and provisions the Azure AI Services account, Foundry project, and default model deployment contract inside this deployment boundary.
-- `attach` mode remains available for subscriptions where Foundry resources are provisioned elsewhere.
+ - `attach` mode remains available for subscriptions where Foundry resources are provisioned elsewhere.
+ - Step 17 expects a chat deployment and an embedding deployment to be available for Memory Store creation; `attach` mode callers must provide both deployment names when they differ from the default chat deployment.
+ - The committed `create` path now enables a system-assigned identity on the AI Services account and grants both the account identity and the project identity `Cognitive Services OpenAI User` on that account so Memory Store can invoke the configured model deployments.
 - Memory store creation is still parameterized even in `create` mode because a stable ARM surface for that resource path has not been confirmed for this repo yet.

@@ -1,7 +1,11 @@
 import { z } from 'zod';
 
 import { isoDateTimeSchema, modelIdSchema, nonEmptyStringSchema, nonNegativeNumberSchema } from './identifiers.js';
-import { approvalCategorySchema, sandboxCredentialExposureSchema } from './records.js';
+import {
+  approvalCategorySchema,
+  headTriggerKindSchema,
+  sandboxCredentialExposureSchema,
+} from './records.js';
 
 export const modelPricingSchema = z
   .object({
@@ -96,6 +100,46 @@ export const credentialServiceConfigSchema = z
   })
   .strict();
 
+export const memoryRememberCategorySchema = z.enum([
+  'preferences',
+  'standing_instructions',
+  'durable_facts',
+  'recurring_patterns',
+  'agent_guidance',
+]);
+
+export const memoryExcludeCategorySchema = z.enum([
+  'operational_scratch',
+  'active_task_state',
+  'queue_state',
+  'approvals',
+  'credentials',
+  'run_journal_detail',
+]);
+
+export const memoryConfigSchema = z
+  .object({
+    storeNamePrefix: nonEmptyStringSchema,
+    retrieval: z
+      .object({
+        maxItems: z.number().int().positive(),
+        maxCharsPerItem: z.number().int().positive(),
+      })
+      .strict(),
+    writes: z
+      .object({
+        allowTriggerKinds: z.array(headTriggerKindSchema).min(1),
+      })
+      .strict(),
+    policy: z
+      .object({
+        remember: z.array(memoryRememberCategorySchema).min(1),
+        exclude: z.array(memoryExcludeCategorySchema).min(1),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const repositoryConfigSchema = z
   .object({
     version: z.literal('1'),
@@ -120,6 +164,7 @@ export const repositoryConfigSchema = z
         services: z.array(credentialServiceConfigSchema).min(1),
       })
       .strict(),
+    memory: memoryConfigSchema,
     sandbox: z
       .object({
         defaultPolicy: nonEmptyStringSchema,
@@ -220,6 +265,30 @@ export const repositoryConfigSchema = z
       }
       credentialAliases.add(service.alias);
     }
+
+    const memoryRemember = new Set<string>();
+    for (const category of value.memory.policy.remember) {
+      if (memoryRemember.has(category)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['memory', 'policy', 'remember'],
+          message: `Duplicate memory remember category '${category}'`,
+        });
+      }
+      memoryRemember.add(category);
+    }
+
+    const memoryExclude = new Set<string>();
+    for (const category of value.memory.policy.exclude) {
+      if (memoryExclude.has(category)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['memory', 'policy', 'exclude'],
+          message: `Duplicate memory exclude category '${category}'`,
+        });
+      }
+      memoryExclude.add(category);
+    }
   });
 
 export type ModelPricing = z.infer<typeof modelPricingSchema>;
@@ -232,4 +301,7 @@ export type ApprovalPolicyCategory = z.infer<typeof approvalPolicyCategorySchema
 export type ApprovalPolicy = z.infer<typeof approvalPolicySchema>;
 export type CredentialServiceBindingRule = z.infer<typeof credentialServiceBindingRuleSchema>;
 export type CredentialServiceConfig = z.infer<typeof credentialServiceConfigSchema>;
+export type MemoryRememberCategory = z.infer<typeof memoryRememberCategorySchema>;
+export type MemoryExcludeCategory = z.infer<typeof memoryExcludeCategorySchema>;
+export type MemoryConfig = z.infer<typeof memoryConfigSchema>;
 export type RepositoryConfig = z.infer<typeof repositoryConfigSchema>;

@@ -224,12 +224,20 @@ module foundryContract '../modules/ai/foundry.bicep' = {
     modelFormat: foundry.modelFormat
     modelName: foundry.modelName
     modelVersion: foundry.modelVersion
+    memoryEmbeddingDeploymentName: foundry.memoryEmbeddingDeploymentName
+    memoryEmbeddingDeploymentSkuName: foundry.memoryEmbeddingDeploymentSkuName
+    memoryEmbeddingDeploymentCapacity: foundry.memoryEmbeddingDeploymentCapacity
+    memoryEmbeddingModelFormat: foundry.memoryEmbeddingModelFormat
+    memoryEmbeddingModelName: foundry.memoryEmbeddingModelName
+    memoryEmbeddingModelVersion: foundry.memoryEmbeddingModelVersion
     memoryStoreEndpointOrId: foundry.memoryStoreEndpointOrId
     attachEndpoint: foundry.attachEndpoint
     attachAccountResourceId: foundry.attachAccountResourceId
     attachProjectResourceId: foundry.attachProjectResourceId
     attachMemoryStoreEndpointOrId: foundry.attachMemoryStoreEndpointOrId
     attachDeploymentName: foundry.attachDeploymentName
+    attachMemoryChatDeploymentName: foundry.attachMemoryChatDeploymentName
+    attachMemoryEmbeddingDeploymentName: foundry.attachMemoryEmbeddingDeploymentName
   }
 }
 
@@ -297,6 +305,8 @@ module apiApp '../modules/hosting/api-app.bicep' = {
     foundryProjectName: foundryProjectName
     foundryEndpoint: foundryContract.outputs.endpoint
     defaultModelDeploymentName: foundryContract.outputs.defaultModelDeploymentName
+    memoryChatDeploymentName: foundryContract.outputs.memoryChatDeploymentName
+    memoryEmbeddingDeploymentName: foundryContract.outputs.memoryEmbeddingDeploymentName
     sandboxBaseUrl: sandboxApp.outputs.internalUrl
     secretReferences: workloadBindings.api
   }
@@ -413,6 +423,8 @@ output applicationInsightsConnectionString string = appInsights.outputs.connecti
 output foundryEndpoint string = foundryContract.outputs.endpoint
 output foundryMemoryStoreEndpointOrId string = foundryContract.outputs.memoryStoreEndpointOrId
 output defaultModelDeploymentName string = foundryContract.outputs.defaultModelDeploymentName
+output memoryChatDeploymentName string = foundryContract.outputs.memoryChatDeploymentName
+output memoryEmbeddingDeploymentName string = foundryContract.outputs.memoryEmbeddingDeploymentName
 output workloadIdentities object = {
   api: {
     clientId: apiIdentity.outputs.clientId

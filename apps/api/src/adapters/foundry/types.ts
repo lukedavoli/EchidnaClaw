@@ -1,7 +1,61 @@
 import type { CorrelationMetadata, HeadEffectSummary, HeadTurnCompletionKind } from '@echidna-claw/contracts';
 import type { HeadPromptAssembly } from '@echidna-claw/prompting';
 
+export type MemoryScopeBinding = {
+  provider: 'telegram';
+  scopeKey: string;
+  storeName: string;
+};
+
+export type MemorySearchInputItem = {
+  role: 'assistant' | 'developer' | 'user';
+  text: string;
+};
+
+export type RetrievedMemory = {
+  id: string;
+  kind: 'user_profile' | 'chat_summary';
+  text: string;
+};
+
+export type MemorySearchResult = {
+  memories: RetrievedMemory[];
+  searchId: string | null;
+};
+
+export type MemoryWriteCandidate = {
+  category:
+    | 'preference'
+    | 'standing_instruction'
+    | 'durable_fact'
+    | 'recurring_pattern'
+    | 'agent_guidance';
+  text: string;
+};
+
+export type DeferredHeadDirective =
+  | {
+      kind: 'memory_write';
+      candidate: MemoryWriteCandidate;
+    };
+
+export interface MemoryStoreAdapter {
+  ensureStore(binding: MemoryScopeBinding): Promise<void>;
+  search(input: {
+    binding: MemoryScopeBinding;
+    items: MemorySearchInputItem[];
+    maxMemories?: number | undefined;
+    previousSearchId?: string | null | undefined;
+  }): Promise<MemorySearchResult>;
+  commitWrites(input: {
+    binding: MemoryScopeBinding;
+    candidates: MemoryWriteCandidate[];
+    previousUpdateId?: string | null | undefined;
+  }): Promise<{ updateIds: string[] }>;
+}
+
 export interface HeadToolExecutionResult {
+  deferredDirectives?: DeferredHeadDirective[];
   effectSummaryPatch?: Partial<HeadEffectSummary>;
   outputText: string;
 }
@@ -33,6 +87,7 @@ export interface FoundryHeadTurnResult {
   assistantText: string | null;
   completionKind: HeadTurnCompletionKind;
   conversationCursor: string | null;
+  deferredDirectives: DeferredHeadDirective[];
   effectSummary: HeadEffectSummary;
   providerConversationId: string | null;
   providerRunId: string | null;

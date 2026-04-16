@@ -92,6 +92,8 @@ const apiEnvSchema = sharedEnvSchema.extend({
   ECHIDNA_HANDS_BASE_URL: optionalUrlSchema,
   ECHIDNA_HANDS_JOB_TARGET: optionalNonEmptyStringSchema,
   ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME: optionalNonEmptyStringSchema,
+  ECHIDNA_FOUNDRY_MEMORY_CHAT_DEPLOYMENT_NAME: optionalNonEmptyStringSchema,
+  ECHIDNA_FOUNDRY_MEMORY_EMBEDDING_DEPLOYMENT_NAME: optionalNonEmptyStringSchema,
   ECHIDNA_TELEGRAM_API_BASE_URL: optionalUrlSchema,
   ECHIDNA_TELEGRAM_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).default(10000),
   ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN: optionalNonEmptyStringSchema,
@@ -152,6 +154,8 @@ const apiRemoteDependencyEnvSchema = z.object({
   ECHIDNA_SANDBOX_BASE_URL: z.string().trim().url(),
   ECHIDNA_HANDS_JOB_TARGET: z.string().trim().min(1),
   ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME: z.string().trim().min(1),
+  ECHIDNA_FOUNDRY_MEMORY_CHAT_DEPLOYMENT_NAME: z.string().trim().min(1),
+  ECHIDNA_FOUNDRY_MEMORY_EMBEDDING_DEPLOYMENT_NAME: z.string().trim().min(1),
   ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN: z.string().trim().min(1),
   ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: z.string().trim().min(1),
 });
@@ -198,6 +202,8 @@ export type SharedCloudDependenciesConfig = {
 export type ApiDependencyConfig = {
   foundry: {
     defaultDeploymentName: string;
+    memoryChatDeploymentName: string;
+    memoryEmbeddingDeploymentName: string;
   };
   head: {
     debounceWindowMs: number;
@@ -367,6 +373,12 @@ function resolveApiDependencyConfig(
   const defaults = {
     foundry: {
       defaultDeploymentName: env.ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME ?? 'gpt-5.4-mini',
+      memoryChatDeploymentName:
+        env.ECHIDNA_FOUNDRY_MEMORY_CHAT_DEPLOYMENT_NAME ??
+        env.ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME ??
+        'gpt-5.4-mini',
+      memoryEmbeddingDeploymentName:
+        env.ECHIDNA_FOUNDRY_MEMORY_EMBEDDING_DEPLOYMENT_NAME ?? 'text-embedding-3-small',
     },
     head: {
       debounceWindowMs: env.ECHIDNA_HEAD_DEBOUNCE_WINDOW_MS,
@@ -406,6 +418,9 @@ function resolveApiDependencyConfig(
   return {
     foundry: {
       defaultDeploymentName: remoteEnv.ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME,
+      memoryChatDeploymentName: remoteEnv.ECHIDNA_FOUNDRY_MEMORY_CHAT_DEPLOYMENT_NAME,
+      memoryEmbeddingDeploymentName:
+        remoteEnv.ECHIDNA_FOUNDRY_MEMORY_EMBEDDING_DEPLOYMENT_NAME,
     },
     head: defaults.head,
     hands: {

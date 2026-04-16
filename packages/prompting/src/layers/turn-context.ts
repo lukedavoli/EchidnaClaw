@@ -89,7 +89,9 @@ export function renderTurnContextLayer(input: {
 }): string {
   const lines = ['# Turn Context', ...renderTriggerSummary(input.trigger, input.latestTrustedMessageText)];
 
-  lines.push(`Working-context summary: ${input.workingContext.summary || 'No summary is currently stored.'}`);
+  lines.push(
+    `Working-context summary (operational state, not durable memory): ${input.workingContext.summary || 'No summary is currently stored.'}`,
+  );
   lines.push(`Current objective: ${input.workingContext.currentObjective ?? 'none'}`);
   lines.push(`Open questions: ${input.workingContext.openQuestions.join(', ') || 'none'}`);
   lines.push(`Latest Hands status: ${input.workingContext.latestHandsStatus ?? 'none'}`);

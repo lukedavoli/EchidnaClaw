@@ -520,6 +520,7 @@ describe('Telegram channel adapter', () => {
         assistantText: replyText,
         completionKind: 'reply',
         conversationCursor: `stub-conversation:${input.headTurnId}`,
+        deferredDirectives: [],
         effectSummary: createEmptyEffectSummary(),
         providerConversationId: `stub-conversation:${input.headTurnId}`,
         providerRunId: `stub-run:${input.headTurnId}`,
