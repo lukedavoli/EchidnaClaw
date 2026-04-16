@@ -52,7 +52,32 @@ describe('createHeadToolCatalog', () => {
       activeHeadTurnCount: 1,
       agent: createAgent(),
       channel: createChannel(),
+      conversationMemoryService: {
+        async commitWrites() {
+          return { updateIds: [] };
+        },
+        createWriteCandidate() {
+          throw new Error('unused');
+        },
+        async loadTurnContext() {
+          throw new Error('unused');
+        },
+        async read() {
+          return {
+            memories: [],
+            searchId: null,
+          };
+        },
+      },
       headTurn: createHeadTurnFixture(),
+      memoryContext: {
+        baselineItems: [],
+        binding: null,
+        lastSearchId: null,
+        promptMemories: [],
+        readAllowed: false,
+        writeAllowed: false,
+      },
       repositoryConfig: loadRepositoryConfig(),
       scheduleMutationService: {
         async mutate() {

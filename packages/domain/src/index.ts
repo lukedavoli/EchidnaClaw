@@ -4,6 +4,7 @@ export * from './concurrency.js';
 export * from './credentials.js';
 export * from './hands.js';
 export * from './idempotency.js';
+export * from './memory.js';
 export * from './sandbox.js';
 export * from './scheduling.js';
 export * from './state-machines.js';

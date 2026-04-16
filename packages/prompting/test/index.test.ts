@@ -24,8 +24,36 @@ const repositoryConfig = {
       initialResponsibilitiesSummary: 'Shared operator profile.',
     },
   },
+  memory: {
+    storeNamePrefix: 'echidna-agent',
+    retrieval: {
+      maxItems: 6,
+      maxCharsPerItem: 400,
+    },
+    writes: {
+      allowTriggerKinds: ['trusted_messages' as const],
+    },
+    policy: {
+      remember: [
+        'preferences',
+        'standing_instructions',
+        'durable_facts',
+        'recurring_patterns',
+        'agent_guidance',
+      ],
+      exclude: [
+        'operational_scratch',
+        'active_task_state',
+        'queue_state',
+        'approvals',
+        'credentials',
+        'run_journal_detail',
+      ],
+    },
+  },
   sandbox: {
     defaultPolicy: 'standard',
+    defaultPackageAllowlist: 'default-runtime',
     policies: [
       {
         name: 'standard',
@@ -38,6 +66,7 @@ const repositoryConfig = {
     packageAllowlists: [
       {
         name: 'default-runtime',
+        packageManager: 'pnpm' as const,
         packages: ['zod'],
       },
     ],

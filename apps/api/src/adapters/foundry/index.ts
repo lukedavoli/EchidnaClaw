@@ -1,15 +1,23 @@
 import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
-import { NotImplementedYetError } from '../../http/errors.js';
 import { createLiveHeadRuntimeAdapter } from './live-head-runtime-adapter.js';
+import { createLiveMemoryStoreAdapter } from './live-memory-store-adapter.js';
 import { createLiveWorkingContextSummarizerAdapter } from './live-working-context-summarizer-adapter.js';
 import { createLocalHeadRuntimeAdapter } from './local-head-runtime-adapter.js';
+import { createLocalMemoryStoreAdapter } from './local-memory-store-adapter.js';
 import { createLocalWorkingContextSummarizerAdapter } from './local-working-context-summarizer-adapter.js';
 import type {
   CancelFoundryTurnInput,
+  DeferredHeadDirective,
   FoundryHeadTurnResult,
   HeadRuntimeAdapter,
+  MemoryScopeBinding,
+  MemorySearchInputItem,
+  MemorySearchResult,
+  MemoryStoreAdapter,
+  MemoryWriteCandidate,
   PreparedHeadTool,
   PreparedHeadTurnInput,
+  RetrievedMemory,
   WorkingContextSummarizerAdapter,
   WorkingContextSummaryInput,
   WorkingContextSummaryResult,
@@ -17,18 +25,21 @@ import type {
 
 export type {
   CancelFoundryTurnInput,
+  DeferredHeadDirective,
   FoundryHeadTurnResult,
   HeadRuntimeAdapter,
+  MemoryScopeBinding,
+  MemorySearchInputItem,
+  MemorySearchResult,
+  MemoryStoreAdapter,
+  MemoryWriteCandidate,
   PreparedHeadTool,
   PreparedHeadTurnInput,
+  RetrievedMemory,
   WorkingContextSummarizerAdapter,
   WorkingContextSummaryInput,
   WorkingContextSummaryResult,
 };
-
-export interface MemoryStoreAdapter {
-  appendTurnMemory(headTurnId: string): Promise<void>;
-}
 
 export interface FoundryAdapters {
   headRuntime: HeadRuntimeAdapter;
@@ -58,18 +69,19 @@ export function createFoundryAdapters(config: ApiRuntimeConfig): {
           defaultDeploymentName: config.foundry.defaultDeploymentName,
           projectEndpoint: config.sharedCloud!.foundry.projectEndpoint,
         });
+  const memoryStore =
+    config.runtimeMode === 'local-minimal'
+      ? createLocalMemoryStoreAdapter()
+      : createLiveMemoryStoreAdapter({
+          chatModelDeploymentName: config.foundry.memoryChatDeploymentName,
+          embeddingModelDeploymentName: config.foundry.memoryEmbeddingDeploymentName,
+          projectEndpoint: config.sharedCloud!.foundry.projectEndpoint,
+        });
 
   return {
     adapters: {
       headRuntime,
-      memoryStore: {
-        async appendTurnMemory(_headTurnId: string): Promise<void> {
-          void _headTurnId;
-          throw new NotImplementedYetError(
-            'Foundry memory-store integration is reserved for Step 17.',
-          );
-        },
-      },
+      memoryStore,
       workingContextSummarizer,
     },
     health: {

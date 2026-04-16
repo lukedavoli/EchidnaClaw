@@ -42,7 +42,7 @@ import {
   type StoredRecord,
 } from '@echidna-claw/persistence';
 
-import type { HeadRuntimeAdapter } from '../../adapters/foundry/index.js';
+import type { DeferredHeadDirective, HeadRuntimeAdapter } from '../../adapters/foundry/index.js';
 import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
 import type { RepositoryBundle } from '../../adapters/repositories/index.js';
 import { ConflictError, NotFoundError } from '../../http/errors.js';
@@ -50,6 +50,7 @@ import { createHeadToolCatalog } from './head-tool-catalog.js';
 import type { ScheduleMutationService } from './schedule-mutation-service.js';
 import type { TaskQueueService } from './task-queue-service.js';
 import type { ApprovalLifecycleService } from './approval-lifecycle-service.js';
+import type { ConversationMemoryService } from './conversation-memory-service.js';
 import type { CredentialLifecycleService } from './credential-lifecycle-service.js';
 import type {
   WorkingContextSummaryService,
@@ -91,6 +92,24 @@ function createEmptyEffectSummary(): HeadEffectSummary {
     sandboxRequested: false,
     memoryOperationRequested: false,
   };
+}
+
+function collectDeferredMemoryWrites(
+  directives: readonly DeferredHeadDirective[],
+): Array<{
+  category:
+    | 'preference'
+    | 'standing_instruction'
+    | 'durable_fact'
+    | 'recurring_pattern'
+    | 'agent_guidance';
+  text: string;
+}> {
+  return directives
+    .filter((directive): directive is Extract<DeferredHeadDirective, { kind: 'memory_write' }> =>
+      directive.kind === 'memory_write',
+    )
+    .map((directive) => directive.candidate);
 }
 
 function createWorkingContextRecord(input: {
@@ -172,6 +191,8 @@ function createRunningHeadTurn(input: {
     supersededBySequence: null,
     providerConversationId: input.workingContext.conversationCursor ?? null,
     providerRunId: null,
+    memorySearchId: null,
+    memoryUpdateIds: [],
     promptProfileVersion: HEAD_BASE_PROMPT_PROFILE_VERSION,
     completionKind: null,
     failureCode: undefined,
@@ -223,6 +244,8 @@ function createRejectedHeadTurn(input: {
     supersededBySequence: null,
     providerConversationId: input.workingContext.conversationCursor ?? null,
     providerRunId: null,
+    memorySearchId: null,
+    memoryUpdateIds: [],
     promptProfileVersion: HEAD_BASE_PROMPT_PROFILE_VERSION,
     completionKind: 'rejected',
     failureCode: input.rejection.code,
@@ -710,6 +733,7 @@ async function reconcileDueTaskBeforeCommit(options: {
 export function createHeadRuntimeService(options: {
   approvalLifecycleService: ApprovalLifecycleService;
   config: ApiRuntimeConfig;
+  conversationMemoryService: ConversationMemoryService;
   credentialLifecycleService: CredentialLifecycleService;
   headRuntime: HeadRuntimeAdapter;
   logger: Logger;
@@ -887,13 +911,23 @@ export function createHeadRuntimeService(options: {
       const activeHeadTurns = await options.repositories.execution.listActiveHeadTurns(
         storedAgent.value.id,
       );
+      const memoryContext = await options.conversationMemoryService.loadTurnContext({
+        agent: storedAgent.value,
+        channel: storedChannel.value,
+        messages: triggerState.messages,
+        modelInput: triggerState.modelInput,
+        repositoryConfig: options.repositoryConfig,
+        trigger: input.trigger,
+      });
       const toolCatalog = createHeadToolCatalog({
         activeHeadTurnCount: activeHeadTurns.length,
         agent: storedAgent.value,
         approvalLifecycleService: options.approvalLifecycleService,
         channel: storedChannel.value,
+        conversationMemoryService: options.conversationMemoryService,
         credentialLifecycleService: options.credentialLifecycleService,
         headTurn: createdHeadTurn.value,
+        memoryContext,
         repositoryConfig: options.repositoryConfig,
         scheduleMutationService: options.scheduleMutationService,
         taskQueueService: options.taskQueueService,
@@ -902,6 +936,7 @@ export function createHeadRuntimeService(options: {
       const prompt = buildHeadPrompt({
         agent: storedAgent.value,
         alwaysVisibleCapabilityIds: toolCatalog.visibleCapabilityIds,
+        durableMemories: memoryContext.promptMemories,
         enabledTools: toolCatalog.promptTools,
         latestTrustedMessageText: triggerState.latestTrustedMessageText,
         repositoryConfig: options.repositoryConfig,
@@ -919,6 +954,8 @@ export function createHeadRuntimeService(options: {
           ? { dueTaskContext: triggerState.dueTaskContext }
           : {}),
       });
+
+      let committedMemoryUpdateIds: string[] = [];
 
       try {
         const requestedModel = resolveHeadRuntimeModel({
@@ -988,6 +1025,8 @@ export function createHeadRuntimeService(options: {
                 supersededBySequence,
                 providerConversationId: runtimeResult.providerConversationId,
                 providerRunId: runtimeResult.providerRunId,
+                memorySearchId: memoryContext.lastSearchId,
+                memoryUpdateIds: [],
                 promptProfileVersion: prompt.promptProfileVersion,
               },
               headTurnEtag: latestHeadTurn.etag,
@@ -1026,6 +1065,8 @@ export function createHeadRuntimeService(options: {
               state: 'failed',
               providerConversationId: runtimeResult.providerConversationId,
               providerRunId: runtimeResult.providerRunId,
+              memorySearchId: memoryContext.lastSearchId,
+              memoryUpdateIds: [],
               promptProfileVersion: prompt.promptProfileVersion,
               completionKind: 'failed',
               failureCode: 'foundry_execution_failed',
@@ -1069,6 +1110,14 @@ export function createHeadRuntimeService(options: {
                 workingContext: reconciledWorkingContext.value,
               })
             : buildExistingSummarySnapshot(reconciledWorkingContext.value, completedAt);
+        if (input.trigger.kind === 'trusted_messages') {
+          committedMemoryUpdateIds = (
+            await options.conversationMemoryService.commitWrites({
+              candidates: collectDeferredMemoryWrites(runtimeResult.deferredDirectives),
+              context: memoryContext,
+            })
+          ).updateIds;
+        }
         const finalizedWorkingContext = applyHeadTurnCommitted({
           assistantSummary: summarySnapshot,
           completedAt,
@@ -1086,6 +1135,8 @@ export function createHeadRuntimeService(options: {
             state: 'completed',
             providerConversationId: runtimeResult.providerConversationId,
             providerRunId: runtimeResult.providerRunId,
+            memorySearchId: memoryContext.lastSearchId,
+            memoryUpdateIds: committedMemoryUpdateIds,
             promptProfileVersion: prompt.promptProfileVersion,
             completionKind: runtimeResult.completionKind,
             failureCode: undefined,
@@ -1143,6 +1194,8 @@ export function createHeadRuntimeService(options: {
             completedAt: failedAt,
             staleCheckedAt: failedAt,
             state: 'failed',
+            memorySearchId: memoryContext.lastSearchId,
+            memoryUpdateIds: committedMemoryUpdateIds,
             completionKind: 'failed',
             failureCode: 'foundry_execution_failed',
             failureMessage:

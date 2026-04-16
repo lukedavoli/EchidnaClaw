@@ -14,6 +14,8 @@ export function createTestApiConfig(
   const baseConfig: ApiConfig = {
     foundry: {
       defaultDeploymentName: 'gpt-5.4-mini',
+      memoryChatDeploymentName: 'gpt-5.4-mini',
+      memoryEmbeddingDeploymentName: 'text-embedding-3-small',
     },
     head: {
       debounceWindowMs: 750,

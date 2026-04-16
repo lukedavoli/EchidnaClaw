@@ -12,6 +12,7 @@ import { createOutboundMessagingService } from '../services/channel/outbound-mes
 import { createTelegramIngressService } from '../services/channel/telegram-ingress-service.js';
 import { createApprovalLifecycleService } from '../services/runtime/approval-lifecycle-service.js';
 import { createCredentialLifecycleService } from '../services/runtime/credential-lifecycle-service.js';
+import { createConversationMemoryService } from '../services/runtime/conversation-memory-service.js';
 import { createHandsRuntimeService } from '../services/runtime/hands-runtime-service.js';
 import { createHeadRuntimeService } from '../services/runtime/head-runtime-service.js';
 import { createSandboxRuntimeService } from '../services/runtime/sandbox-runtime-service.js';
@@ -83,12 +84,18 @@ export function registerServices(options: {
     logger: options.loggerFactory.createLogger({ service: 'working_context_summary' }),
     summarizer: adapters.adapters.foundry.workingContextSummarizer,
   });
+  const conversationMemoryService = createConversationMemoryService({
+    logger: options.loggerFactory.createLogger({ service: 'conversation_memory' }),
+    memoryStore: adapters.adapters.foundry.memoryStore,
+    repositoryConfig,
+  });
   const scheduleMutationService = createScheduleMutationService({
     repositories: adapters.adapters.repositories,
   });
   const headRuntimeService = createHeadRuntimeService({
     approvalLifecycleService,
     config: options.config,
+    conversationMemoryService,
     credentialLifecycleService,
     headRuntime: adapters.adapters.foundry.headRuntime,
     logger: options.loggerFactory.createLogger({ service: 'head_runtime' }),

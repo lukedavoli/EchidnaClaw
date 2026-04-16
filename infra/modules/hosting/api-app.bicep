@@ -22,6 +22,8 @@ param applicationInsightsConnectionString string
 param foundryProjectName string
 param foundryEndpoint string
 param defaultModelDeploymentName string
+param memoryChatDeploymentName string
+param memoryEmbeddingDeploymentName string
 param sandboxBaseUrl string
 param targetPort int = 8080
 param secretReferences array = []
@@ -90,6 +92,14 @@ var envVars = [
   {
     name: 'ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME'
     value: defaultModelDeploymentName
+  }
+  {
+    name: 'ECHIDNA_FOUNDRY_MEMORY_CHAT_DEPLOYMENT_NAME'
+    value: memoryChatDeploymentName
+  }
+  {
+    name: 'ECHIDNA_FOUNDRY_MEMORY_EMBEDDING_DEPLOYMENT_NAME'
+    value: memoryEmbeddingDeploymentName
   }
   {
     name: 'ECHIDNA_SANDBOX_BASE_URL'

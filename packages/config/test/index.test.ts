@@ -74,6 +74,8 @@ describe('@echidna-claw/config', () => {
       ...createSharedCloudBaseEnv(),
       ECHIDNA_API_PUBLIC_BASE_URL: 'https://api.echidna.example',
       ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME: 'gpt-5.4-mini',
+      ECHIDNA_FOUNDRY_MEMORY_CHAT_DEPLOYMENT_NAME: 'gpt-5.4-mini',
+      ECHIDNA_FOUNDRY_MEMORY_EMBEDDING_DEPLOYMENT_NAME: 'text-embedding-3-small',
       ECHIDNA_HANDS_JOB_TARGET: 'hands-job-dev',
       ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: 'internal-secret',
       ECHIDNA_SANDBOX_BASE_URL: 'https://sandbox.echidna.example',
@@ -84,6 +86,8 @@ describe('@echidna-claw/config', () => {
     expect(config.sharedCloud?.operatorIdentity.trustedUserObjectIds).toEqual(['user-a', 'user-b']);
     expect(config.publicBaseUrl).toBe('https://api.echidna.example');
     expect(config.sandbox.baseUrl).toBe('https://sandbox.echidna.example');
+    expect(config.foundry.memoryChatDeploymentName).toBe('gpt-5.4-mini');
+    expect(config.foundry.memoryEmbeddingDeploymentName).toBe('text-embedding-3-small');
     expect(config.internalRuntime.authToken).toBe('internal-secret');
     expect(config.telegram.webhookSecretToken).toBe('telegram-secret');
   });

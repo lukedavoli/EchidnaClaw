@@ -11,7 +11,12 @@ import {
   buildCapabilitySummary,
   renderCapabilitySkillLayer,
 } from './layers/capability-skill.js';
+import {
+  type PromptDurableMemoryItem,
+  renderDurableMemoryLayer,
+} from './layers/durable-memory.js';
 import { renderEchidnaBaseProfileLayer } from './layers/echidna-base-profile.js';
+import { renderMemoryPolicyLayer } from './layers/memory-policy.js';
 import { renderPlatformPolicyLayer } from './layers/platform-policy.js';
 import {
   type DueTaskPromptContext,
@@ -38,6 +43,7 @@ export type HeadPromptAssembly = {
 export type HeadPromptInput = {
   agent: Agent;
   alwaysVisibleCapabilityIds?: readonly string[];
+  durableMemories?: readonly PromptDurableMemoryItem[];
   dueTaskContext?: DueTaskPromptContext;
   enabledTools: readonly PromptToolDescriptor[];
   latestTrustedMessageText?: string | null;
@@ -110,6 +116,14 @@ export function buildHeadPrompt(input: HeadPromptInput): HeadPromptAssembly {
       text: renderAgentGuidanceLayer(input.agent),
     },
     {
+      key: 'memory_policy',
+      text: renderMemoryPolicyLayer(input.repositoryConfig),
+    },
+    {
+      key: 'durable_memory',
+      text: renderDurableMemoryLayer(input.durableMemories ?? []),
+    },
+    {
       key: 'turn_context',
       text: renderTurnContextLayer({
         enabledTools: input.enabledTools,
@@ -137,4 +151,4 @@ export {
   HEAD_BASE_PROMPT_PROFILE_VERSION,
   shouldIncludeCapabilitySkill,
 };
-export type { DueTaskPromptContext, PromptToolDescriptor };
+export type { DueTaskPromptContext, PromptDurableMemoryItem, PromptToolDescriptor };

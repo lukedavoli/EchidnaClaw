@@ -54,6 +54,17 @@ When `ECHIDNA_RUNTIME_MODE` is `shared-cloud` or `cloud-deployed`, the following
 - `ECHIDNA_FOUNDRY_PROJECT_ENDPOINT`
 - `ECHIDNA_MONITOR_CONNECTION_STRING`
 
+For the API process in shared-cloud or cloud-deployed mode, the following additional variables are required:
+
+- `ECHIDNA_API_PUBLIC_BASE_URL`
+- `ECHIDNA_SANDBOX_BASE_URL`
+- `ECHIDNA_HANDS_JOB_TARGET`
+- `ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME`
+- `ECHIDNA_FOUNDRY_MEMORY_CHAT_DEPLOYMENT_NAME`
+- `ECHIDNA_FOUNDRY_MEMORY_EMBEDDING_DEPLOYMENT_NAME`
+- `ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN`
+- `ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN`
+
 Developer-provided values belong in `.env.local`. Pipeline-provided values should come from GitHub environments and the eventual deployment secret store.
 
 ## CI And Deployment Workflows
