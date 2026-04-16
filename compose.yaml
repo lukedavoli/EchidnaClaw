@@ -113,3 +113,18 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: apps/scheduler/Dockerfile
+    environment:
+      <<: *shared-runtime-env
+      ECHIDNA_API_PUBLIC_BASE_URL: http://api:${ECHIDNA_API_PORT:-3001}
+      ECHIDNA_SCHEDULER_MAX_BATCH_SIZE: ${ECHIDNA_SCHEDULER_MAX_BATCH_SIZE:-50}
+      ECHIDNA_SCHEDULER_MAX_PASSES: ${ECHIDNA_SCHEDULER_MAX_PASSES:-1}
+      ECHIDNA_SCHEDULER_REQUEST_TIMEOUT_MS: ${ECHIDNA_SCHEDULER_REQUEST_TIMEOUT_MS:-15000}
+      ECHIDNA_WEB_PUBLIC_BASE_URL: http://127.0.0.1:4173
+    depends_on:
+      api:
+        condition: service_healthy

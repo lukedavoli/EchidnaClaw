@@ -12,13 +12,10 @@ import {
   type HandsFollowUpTaskRequest,
   type HandsHandlerOutcome,
   type HandsHandlerProgressUpdate,
-  type HandsRun,
   type HandsRunExecutionResult,
   type HandsStartRunRequest,
-  type RunJournal,
   type RunJournalEntry,
   type SandboxCloseSessionRequest,
-  type SandboxExecuteCommandRequest,
   type Task,
   type TaskProgressSummary,
 } from '@echidna-claw/contracts';

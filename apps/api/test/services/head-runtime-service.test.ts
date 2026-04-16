@@ -145,6 +145,25 @@ async function executeTrustedTurn(input: {
       workingContexts: repositories.workingContexts,
     },
     repositoryConfig,
+    scheduleMutationService: {
+      async mutate() {
+        throw new Error('unused');
+      },
+    },
+    taskQueueService: {
+      async activateDeferredTask() {
+        throw new Error('unused');
+      },
+      async enqueueTask() {
+        throw new Error('unused');
+      },
+      async getTaskStatusSnapshot() {
+        throw new Error('unused');
+      },
+      async requestQueuedTaskStart() {
+        throw new Error('unused');
+      },
+    },
     workingContextSummaryService: {
       async refreshAfterHandsEvent() {
         return {

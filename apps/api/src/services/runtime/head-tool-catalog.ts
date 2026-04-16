@@ -10,9 +10,14 @@ import type { PromptToolDescriptor } from '@echidna-claw/prompting';
 import { z } from 'zod';
 
 import type { PreparedHeadTool } from '../../adapters/foundry/index.js';
+import {
+  changeScheduleToolInputSchema,
+  handleChangeSchedule,
+} from './head-tool-handlers/change-schedule.js';
 import { handleCreateTask } from './head-tool-handlers/create-task.js';
 import { handleDescribeCapabilities } from './head-tool-handlers/describe-capabilities.js';
 import { handleReadStatus } from './head-tool-handlers/read-status.js';
+import type { ScheduleMutationService } from './schedule-mutation-service.js';
 import type { TaskQueueService } from './task-queue-service.js';
 
 type HeadToolName =
@@ -58,6 +63,7 @@ export function createHeadToolCatalog(input: {
   channel: Channel;
   headTurn: HeadTurn;
   repositoryConfig: RepositoryConfig;
+  scheduleMutationService: ScheduleMutationService;
   taskQueueService: TaskQueueService;
   workingContext: WorkingContext;
 }): HeadToolCatalog {
@@ -149,16 +155,15 @@ export function createHeadToolCatalog(input: {
       name: 'create_task',
     },
     {
-      description: 'Create, update, or pause a schedule.',
-      enabled: false,
-      inputSchema: {
-        type: 'object',
-        properties: {
-          request: { type: 'string' },
-        },
-        required: ['request'],
-        additionalProperties: false,
-      },
+      description: 'Create, update, pause, resume, or delete a recurring schedule.',
+      enabled: true,
+      execute: async (args) =>
+        handleChangeSchedule({
+          args,
+          headTurn: input.headTurn,
+          scheduleMutationService: input.scheduleMutationService,
+        }),
+      inputSchema: changeScheduleToolInputSchema,
       name: 'change_schedule',
     },
     {

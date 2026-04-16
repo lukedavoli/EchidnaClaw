@@ -14,6 +14,7 @@ import {
 import { renderEchidnaBaseProfileLayer } from './layers/echidna-base-profile.js';
 import { renderPlatformPolicyLayer } from './layers/platform-policy.js';
 import {
+  type DueTaskPromptContext,
   type PromptToolDescriptor,
   renderTurnContextLayer,
 } from './layers/turn-context.js';
@@ -37,6 +38,7 @@ export type HeadPromptAssembly = {
 export type HeadPromptInput = {
   agent: Agent;
   alwaysVisibleCapabilityIds?: readonly string[];
+  dueTaskContext?: DueTaskPromptContext;
   enabledTools: readonly PromptToolDescriptor[];
   latestTrustedMessageText?: string | null;
   repositoryConfig: RepositoryConfig;
@@ -116,6 +118,7 @@ export function buildHeadPrompt(input: HeadPromptInput): HeadPromptAssembly {
         trigger: input.trigger,
         webSearchEnabled: input.webSearchEnabled,
         workingContext: input.workingContext,
+        ...(input.dueTaskContext ? { dueTaskContext: input.dueTaskContext } : {}),
       }),
     },
   );
@@ -134,4 +137,4 @@ export {
   HEAD_BASE_PROMPT_PROFILE_VERSION,
   shouldIncludeCapabilitySkill,
 };
-export type { PromptToolDescriptor };
+export type { DueTaskPromptContext, PromptToolDescriptor };

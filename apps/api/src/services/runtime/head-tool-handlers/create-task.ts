@@ -59,6 +59,10 @@ function getQueueLane(headTurn: HeadTurn): QueueLane {
 }
 
 function formatLaunchSummary(result: Awaited<ReturnType<TaskQueueService['enqueueTask']>>): string {
+  if (result.taskState === 'deferred') {
+    return 'The task is waiting until its due time; no Hands startup request was issued.';
+  }
+
   if (!result.startRequest) {
     return 'No Hands startup request was issued.';
   }
@@ -86,13 +90,15 @@ export async function handleCreateTask(input: {
   outputText: string;
 }> {
   const args = createTaskArgsSchema.parse(input.args);
-  const result = await input.taskQueueService.enqueueTask({
+  const dueAt = args.dueAt ?? null;
+  const requestedAt = new Date().toISOString();
+  const request = {
     agentId: input.headTurn.agentId,
     correlation: {
       ...input.headTurn.correlation,
       taskId: input.headTurn.correlation.taskId,
     },
-    dueAt: args.dueAt ?? null,
+    dueAt,
     externalReferences: [],
     headTurnId: input.headTurn.id,
     lane: getQueueLane(input.headTurn),
@@ -104,14 +110,23 @@ export async function handleCreateTask(input: {
     taskType: args.taskType,
     workingContextId: input.workingContext.id,
     workingContextSummary: input.workingContext.summary,
-  });
+  };
+  const result =
+    dueAt == null || dueAt > requestedAt
+      ? await input.taskQueueService.enqueueTask(request)
+      : input.headTurn.triggerKind === 'due_task' && input.headTurn.taskId
+        ? await input.taskQueueService.activateDeferredTask({
+            ...request,
+            taskId: input.headTurn.taskId,
+          })
+        : await input.taskQueueService.enqueueTask(request);
 
   return {
     effectSummaryPatch: {
       taskRequested: true,
     },
     outputText: [
-      `Task ${result.taskId} ${result.disposition.replaceAll('_', ' ')}.`,
+      `Task ${result.taskId} ${result.disposition.replaceAll('_', ' ')} as ${result.taskState}.`,
       formatLaunchSummary(result),
     ].join(' '),
   };

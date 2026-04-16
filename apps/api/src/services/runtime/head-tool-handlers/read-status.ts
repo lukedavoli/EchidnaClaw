@@ -12,6 +12,7 @@ export function handleReadStatus(input: {
     `Active head turns: ${input.activeHeadTurnCount}`,
     `Working-context summary: ${input.snapshot.workingContextSummary || 'No summary is currently stored.'}`,
     `Open tasks: ${input.snapshot.openTasks.length}`,
+    `Active schedules: ${input.snapshot.schedules.length}`,
     `Pending approvals: ${input.snapshot.pendingApprovalIds.length}`,
   ];
 
@@ -35,15 +36,24 @@ export function handleReadStatus(input: {
               task.launchState.status === 'failed' && task.launchState.lastErrorMessage
                 ? `launch=${task.launchState.status} (${task.launchState.lastErrorMessage})`
                 : `launch=${task.launchState.status}`;
+            const dueAt = task.dueAt ? ` dueAt=${task.dueAt}` : '';
             const runSummary = task.runSummary?.summary
               ? ` journal=${task.runSummary.summary}`
               : '';
 
-            return `- ${task.taskId}: ${task.state} ${task.queue.lane}/${task.queue.priority} ${launchState} outcome="${task.requestedOutcome}" progress="${progress}"${runSummary}`;
+            return `- ${task.taskId}: ${task.state} ${task.queue.lane}/${task.queue.priority}${dueAt} ${launchState} outcome="${task.requestedOutcome}" progress="${progress}"${runSummary}`;
           })
         : ['- No open tasks.'];
 
     lines.push(...taskLines);
+    lines.push(
+      ...(input.snapshot.schedules.length > 0
+        ? input.snapshot.schedules.map(
+            (schedule) =>
+              `- schedule ${schedule.scheduleId}: ${schedule.state} nextDueAt=${schedule.nextDueAt ?? 'none'} description="${schedule.description}"`,
+          )
+        : ['- No active schedules.']),
+    );
   }
 
   return lines.join('\n');

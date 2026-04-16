@@ -12,8 +12,8 @@ import {
   type HandsReleaseForUserRequest,
   type HandsRun,
   type HandsStartRunRequest,
-  type SchedulerMaterializeDueSchedulesRequest,
-  type Task,
+  type SchedulerProcessDueWorkRequest,
+  type SchedulerProcessDueWorkResult,
 } from '@echidna-claw/contracts';
 import { DefaultAzureCredential } from '@azure/identity';
 import { createHandsExecutionCoordinator } from '@echidna-claw/hands-runtime';
@@ -51,7 +51,7 @@ export interface HandsJobTriggerAdapter {
 }
 
 export interface SchedulerRuntimeAdapter {
-  materializeDueSchedules(input: SchedulerMaterializeDueSchedulesRequest): Promise<Task[]>;
+  processDueWork(input: SchedulerProcessDueWorkRequest): Promise<SchedulerProcessDueWorkResult>;
 }
 
 type CloudJobTemplateEnvVar = {
@@ -558,12 +558,12 @@ export function createRuntimeAdapters(options: {
     runtime: {
       handsJobs,
       schedulerRuntime: {
-        async materializeDueSchedules(
-          _input: SchedulerMaterializeDueSchedulesRequest,
-        ): Promise<Task[]> {
+        async processDueWork(
+          _input: SchedulerProcessDueWorkRequest,
+        ): Promise<SchedulerProcessDueWorkResult> {
           void _input;
           throw new NotImplementedYetError(
-            'Schedule materialization is reserved for Step 15.',
+            'Scheduler runtime adapter is not used by the API runtime.',
           );
         },
       },

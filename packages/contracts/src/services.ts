@@ -34,7 +34,6 @@ import {
   HeadTurn,
   outboundMessageActionSchema,
   SandboxSession,
-  Task,
   approvalStateSchema,
   usageEventSchema,
 } from './records.js';
@@ -138,10 +137,25 @@ export const sandboxCloseSessionRequestSchema = z
   })
   .strict();
 
-export const schedulerMaterializeDueSchedulesRequestSchema = z
+export const schedulerProcessDueWorkRequestSchema = z
   .object({
     asOf: isoDateTimeSchema,
+    maxBatchSize: positiveIntegerSchema.optional(),
+    maxPasses: positiveIntegerSchema.optional(),
     correlation: correlationMetadataSchema,
+  })
+  .strict();
+
+export const schedulerProcessDueWorkResultSchema = z
+  .object({
+    activeHeadConflictCount: z.number().int().nonnegative(),
+    asOf: isoDateTimeSchema,
+    failureCount: z.number().int().nonnegative(),
+    launchedDueTaskTurnCount: z.number().int().nonnegative(),
+    launchedTaskIds: z.array(taskIdSchema).default([]),
+    materializedScheduleCount: z.number().int().nonnegative(),
+    materializedTaskIds: z.array(taskIdSchema).default([]),
+    skippedByIdempotencyCount: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -284,9 +298,8 @@ export type SandboxCommandStatus = z.infer<typeof sandboxCommandStatusSchema>;
 export type SandboxExecuteCommandRequest = z.infer<typeof sandboxExecuteCommandRequestSchema>;
 export type SandboxExecuteCommandResult = z.infer<typeof sandboxExecuteCommandResultSchema>;
 export type SandboxCloseSessionRequest = z.infer<typeof sandboxCloseSessionRequestSchema>;
-export type SchedulerMaterializeDueSchedulesRequest = z.infer<
-  typeof schedulerMaterializeDueSchedulesRequestSchema
->;
+export type SchedulerProcessDueWorkRequest = z.infer<typeof schedulerProcessDueWorkRequestSchema>;
+export type SchedulerProcessDueWorkResult = z.infer<typeof schedulerProcessDueWorkResultSchema>;
 export type WebCreateAgentRequest = z.infer<typeof webCreateAgentRequestSchema>;
 export type WebSoftDeleteAgentRequest = z.infer<typeof webSoftDeleteAgentRequestSchema>;
 export type WebRestoreAgentRequest = z.infer<typeof webRestoreAgentRequestSchema>;
@@ -327,7 +340,7 @@ export interface SandboxService {
 }
 
 export interface SchedulerService {
-  materializeDueSchedules(input: SchedulerMaterializeDueSchedulesRequest): Promise<Task[]>;
+  processDueWork(input: SchedulerProcessDueWorkRequest): Promise<SchedulerProcessDueWorkResult>;
 }
 
 export interface WebControlPlaneService {

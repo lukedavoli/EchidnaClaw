@@ -21,6 +21,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@echidna-claw/contracts": "workspace:*"
+    "@echidna-claw/contracts": "workspace:*",
+    "@js-temporal/polyfill": "^0.5.1"
   }
 }

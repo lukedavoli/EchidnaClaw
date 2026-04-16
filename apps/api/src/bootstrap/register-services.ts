@@ -13,6 +13,7 @@ import { createTelegramIngressService } from '../services/channel/telegram-ingre
 import { createHandsRuntimeService } from '../services/runtime/hands-runtime-service.js';
 import { createHeadRuntimeService } from '../services/runtime/head-runtime-service.js';
 import { createSandboxRuntimeService } from '../services/runtime/sandbox-runtime-service.js';
+import { createScheduleMutationService } from '../services/runtime/schedule-mutation-service.js';
 import { createSchedulerRuntimeService } from '../services/runtime/scheduler-runtime-service.js';
 import { createTaskQueueService } from '../services/runtime/task-queue-service.js';
 import { createWorkingContextSummaryService } from '../services/runtime/working-context-summary-service.js';
@@ -57,12 +58,16 @@ export function registerServices(options: {
     logger: options.loggerFactory.createLogger({ service: 'working_context_summary' }),
     summarizer: adapters.adapters.foundry.workingContextSummarizer,
   });
+  const scheduleMutationService = createScheduleMutationService({
+    repositories: adapters.adapters.repositories,
+  });
   const headRuntimeService = createHeadRuntimeService({
     config: options.config,
     headRuntime: adapters.adapters.foundry.headRuntime,
     logger: options.loggerFactory.createLogger({ service: 'head_runtime' }),
     repositories: adapters.adapters.repositories,
     repositoryConfig,
+    scheduleMutationService,
     taskQueueService,
     workingContextSummaryService,
   });
@@ -101,8 +106,9 @@ export function registerServices(options: {
         sandboxRuntime: adapters.adapters.sandboxRuntime,
       }),
       schedulerRuntimeService: createSchedulerRuntimeService({
+        headRuntimeService,
         logger: options.loggerFactory.createLogger({ service: 'scheduler_runtime' }),
-        schedulerRuntime: adapters.adapters.schedulerRuntime,
+        repositories: adapters.adapters.repositories,
       }),
       taskQueueService,
       telegramIngressService: createTelegramIngressService({

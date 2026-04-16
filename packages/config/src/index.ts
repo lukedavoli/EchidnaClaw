@@ -122,6 +122,14 @@ const handsEnvSchema = sharedEnvSchema.extend({
   ECHIDNA_SANDBOX_BASE_URL: optionalUrlSchema,
 });
 
+const schedulerEnvSchema = sharedEnvSchema.extend({
+  ECHIDNA_API_PUBLIC_BASE_URL: optionalUrlSchema,
+  ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: optionalNonEmptyStringSchema,
+  ECHIDNA_SCHEDULER_MAX_BATCH_SIZE: z.coerce.number().int().positive().default(50),
+  ECHIDNA_SCHEDULER_MAX_PASSES: z.coerce.number().int().positive().default(1),
+  ECHIDNA_SCHEDULER_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).default(15000),
+});
+
 const sharedCloudRuntimeEnvSchema = z.object({
   ECHIDNA_WEB_PUBLIC_BASE_URL: z.string().trim().url(),
   ECHIDNA_OPERATOR_OBJECT_ID: z.string().trim().min(1),
@@ -149,6 +157,11 @@ const apiRemoteDependencyEnvSchema = z.object({
 });
 
 const sandboxRemoteDependencyEnvSchema = z.object({
+  ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: z.string().trim().min(1),
+});
+
+const schedulerRemoteDependencyEnvSchema = z.object({
+  ECHIDNA_API_PUBLIC_BASE_URL: z.string().trim().url(),
   ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: z.string().trim().min(1),
 });
 
@@ -246,6 +259,14 @@ export type HandsConfig = BaseServiceConfig & {
   port: number;
   startRunPayload: string | null;
   workerInstanceId: string;
+};
+export type SchedulerConfig = BaseServiceConfig & {
+  apiBaseUrl: string;
+  internalAuthToken: string;
+  maxBatchSize: number;
+  maxPasses: number;
+  requestTimeoutMs: number;
+  serviceName: 'scheduler';
 };
 
 type EnvSource = Record<string, string | undefined>;
@@ -473,5 +494,33 @@ export function loadHandsConfig(source: EnvSource = process.env): HandsConfig {
     workerInstanceId:
       env.ECHIDNA_HANDS_WORKER_INSTANCE_ID ??
       `hands-${env.ECHIDNA_RUNTIME_MODE}-${env.ECHIDNA_HANDS_PORT}`,
+  };
+}
+
+export function loadSchedulerConfig(source: EnvSource = process.env): SchedulerConfig {
+  if (source === process.env) {
+    hydrateRepositoryEnv();
+  }
+
+  const env = parseEnv(schedulerEnvSchema, source);
+  const remoteEnv =
+    env.ECHIDNA_RUNTIME_MODE === 'local-minimal'
+      ? null
+      : parseEnv(schedulerRemoteDependencyEnvSchema, source);
+
+  return {
+    ...buildBaseServiceConfig(source, env),
+    apiBaseUrl:
+      remoteEnv?.ECHIDNA_API_PUBLIC_BASE_URL ??
+      env.ECHIDNA_API_PUBLIC_BASE_URL ??
+      'http://127.0.0.1:3001',
+    internalAuthToken:
+      remoteEnv?.ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN ??
+      env.ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN ??
+      'local-internal-runtime-token',
+    maxBatchSize: env.ECHIDNA_SCHEDULER_MAX_BATCH_SIZE,
+    maxPasses: env.ECHIDNA_SCHEDULER_MAX_PASSES,
+    requestTimeoutMs: env.ECHIDNA_SCHEDULER_REQUEST_TIMEOUT_MS,
+    serviceName: 'scheduler',
   };
 }

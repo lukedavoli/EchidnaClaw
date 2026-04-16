@@ -12,6 +12,8 @@ import type {
   HeadTurnExecutionResult,
   InboundMessage,
   RepositoryConfig,
+  Schedule,
+  Task,
   WorkingContext,
 } from '@echidna-claw/contracts';
 import { headTurnExecutionResultSchema } from '@echidna-claw/contracts';
@@ -24,9 +26,12 @@ import {
   isAgentOperational,
   shouldRotateEpisode,
   shouldSupersedeTurn,
+  transitionTaskState,
+  withTaskProgressSummary,
 } from '@echidna-claw/domain';
 import type { Logger } from '@echidna-claw/observability';
 import {
+  type DueTaskPromptContext,
   HEAD_BASE_PROMPT_PROFILE_VERSION,
   buildCapabilitySummary,
   buildHeadPrompt,
@@ -42,6 +47,7 @@ import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
 import type { RepositoryBundle } from '../../adapters/repositories/index.js';
 import { ConflictError, NotFoundError } from '../../http/errors.js';
 import { createHeadToolCatalog } from './head-tool-catalog.js';
+import type { ScheduleMutationService } from './schedule-mutation-service.js';
 import type { TaskQueueService } from './task-queue-service.js';
 import type {
   WorkingContextSummaryService,
@@ -51,6 +57,7 @@ import type {
 const HEAD_TURN_CLAIM_RETRY_LIMIT = 3;
 
 type TriggerLoadResult = {
+  dueTaskContext?: DueTaskPromptContext | undefined;
   inReplyToInboundMessageId?: string;
   latestTrustedMessageText: string | null;
   messages: InboundMessage[];
@@ -238,6 +245,75 @@ function mapCompletionKindToStatus(
   }
 }
 
+function formatRecurrenceSummary(schedule: Schedule): string {
+  const recurrence = schedule.recurrence;
+
+  if (recurrence.frequency === 'hourly') {
+    return `every ${recurrence.interval} hour(s) in ${recurrence.timeZone}`;
+  }
+
+  if (recurrence.frequency === 'daily') {
+    return `every ${recurrence.interval} day(s) at ${recurrence.localTime ?? 'unspecified'} in ${recurrence.timeZone}`;
+  }
+
+  return `every ${recurrence.interval} week(s) on ${(recurrence.weekdays ?? []).join(', ') || 'anchor weekday'} at ${recurrence.localTime ?? 'unspecified'} in ${recurrence.timeZone}`;
+}
+
+function buildDueTaskPromptContext(input: {
+  schedule?: Schedule | null;
+  task?: Task | null;
+}): DueTaskPromptContext | undefined {
+  if (!input.task && !input.schedule) {
+    return undefined;
+  }
+
+  return {
+    origin: input.schedule ? 'schedule' : 'one_off',
+    ...(input.task
+      ? {
+          task: {
+            dueAt: input.task.dueAt,
+            notes: input.task.notes,
+            progressHeadline: input.task.progressSummary?.headline ?? null,
+            queueLabel: `${input.task.queue.lane}/${input.task.queue.priority}`,
+            requestedByKind: input.task.requestedBy.kind,
+            requestedOutcome: input.task.requestedOutcome,
+            scheduleId: input.task.scheduleId ?? null,
+            state: input.task.state,
+            taskId: input.task.id,
+            taskType: input.task.type,
+          },
+        }
+      : {}),
+    ...(input.schedule
+      ? {
+          schedule: {
+            description: input.schedule.description,
+            lastMaterializedOccurrenceAt: input.schedule.lastMaterializedOccurrenceAt,
+            naturalLanguageRequest: input.schedule.naturalLanguageRequest,
+            nextDueAt: input.schedule.nextDueAt,
+            recurrenceSummary: formatRecurrenceSummary(input.schedule),
+            scheduleId: input.schedule.id,
+          },
+        }
+      : {}),
+  };
+}
+
+function buildCompletedDueTaskWorkingContext(input: {
+  completedAt: string;
+  taskId: string;
+  workingContext: WorkingContext;
+}): WorkingContext {
+  return {
+    ...input.workingContext,
+    activeTaskId:
+      input.workingContext.activeTaskId === input.taskId ? null : input.workingContext.activeTaskId,
+    openTaskIds: input.workingContext.openTaskIds.filter((taskId) => taskId !== input.taskId),
+    updatedAt: input.completedAt,
+  };
+}
+
 function createReplyDraft(input: {
   assistantText: string | null;
   channel: Channel;
@@ -383,6 +459,38 @@ async function loadTriggerState(options: {
     if (!task) {
       throw new NotFoundError('Due task not found.');
     }
+
+    const scheduleId = options.trigger.scheduleId ?? task.value.scheduleId;
+    const schedule =
+      scheduleId != null
+        ? await options.repositories.schedules.get(options.agentId, scheduleId)
+        : null;
+
+    if (scheduleId != null && !schedule) {
+      throw new NotFoundError('Due schedule not found.');
+    }
+
+    return {
+      latestTrustedMessageText: null,
+      messages: [],
+      modelInput: [
+        {
+          role: 'developer',
+          text: `Review the due task that became ready at ${options.trigger.dueAt}.`,
+        },
+      ],
+      ...(buildDueTaskPromptContext({
+        schedule: schedule?.value ?? null,
+        task: task.value,
+      })
+        ? {
+            dueTaskContext: buildDueTaskPromptContext({
+              schedule: schedule?.value ?? null,
+              task: task.value,
+            }),
+          }
+        : {}),
+    };
   }
 
   if (options.trigger.scheduleId) {
@@ -404,6 +512,16 @@ async function loadTriggerState(options: {
         text: `A due-task trigger fired at ${options.trigger.dueAt}. Task id: ${options.trigger.taskId ?? 'none'}. Schedule id: ${options.trigger.scheduleId ?? 'none'}.`,
       },
     ],
+    ...(options.trigger.scheduleId != null
+      ? {
+          dueTaskContext: buildDueTaskPromptContext({
+            schedule:
+              (
+                await options.repositories.schedules.get(options.agentId, options.trigger.scheduleId)
+              )?.value ?? null,
+          }),
+        }
+      : {}),
   };
 }
 
@@ -534,12 +652,64 @@ function isTurnSuperseded(options: {
   );
 }
 
+async function reconcileDueTaskBeforeCommit(options: {
+  completedAt: string;
+  dueAt: string | null;
+  repositories: RepositoryBundle;
+  taskId: string | null;
+  workingContext: StoredRecord<WorkingContext>;
+}): Promise<StoredRecord<WorkingContext>> {
+  if (!options.taskId) {
+    return options.workingContext;
+  }
+
+  const storedTask = await options.repositories.tasks.getTask(
+    options.workingContext.value.agentId,
+    options.taskId,
+  );
+  if (!storedTask || storedTask.value.state !== 'deferred') {
+    return options.workingContext;
+  }
+
+  if (
+    options.dueAt != null &&
+    storedTask.value.dueAt != null &&
+    storedTask.value.dueAt > options.dueAt
+  ) {
+    return options.workingContext;
+  }
+
+  const completedTask = withTaskProgressSummary(
+    transitionTaskState(storedTask.value, 'completed', options.completedAt),
+    {
+      headline: `Handled: ${storedTask.value.requestedOutcome}`,
+      detail: 'Handled during due-task review.',
+      waitingForUser: false,
+      lastActor: 'head',
+    },
+    options.completedAt,
+  );
+  const completed = await options.repositories.tasks.completeDeferredTask({
+    task: completedTask,
+    taskEtag: storedTask.etag,
+    workingContext: buildCompletedDueTaskWorkingContext({
+      completedAt: options.completedAt,
+      taskId: storedTask.value.id,
+      workingContext: options.workingContext.value,
+    }),
+    workingContextEtag: options.workingContext.etag,
+  });
+
+  return completed.workingContext;
+}
+
 export function createHeadRuntimeService(options: {
   config: ApiRuntimeConfig;
   headRuntime: HeadRuntimeAdapter;
   logger: Logger;
   repositories: RepositoryBundle;
   repositoryConfig: RepositoryConfig;
+  scheduleMutationService: ScheduleMutationService;
   taskQueueService: TaskQueueService;
   workingContextSummaryService: WorkingContextSummaryService;
 }): HeadService {
@@ -717,6 +887,7 @@ export function createHeadRuntimeService(options: {
         channel: storedChannel.value,
         headTurn: createdHeadTurn.value,
         repositoryConfig: options.repositoryConfig,
+        scheduleMutationService: options.scheduleMutationService,
         taskQueueService: options.taskQueueService,
         workingContext: claimedWorkingContext.value,
       });
@@ -736,6 +907,9 @@ export function createHeadRuntimeService(options: {
         trigger: input.trigger,
         webSearchEnabled: true,
         workingContext: claimedWorkingContext.value,
+        ...(triggerState.dueTaskContext
+          ? { dueTaskContext: triggerState.dueTaskContext }
+          : {}),
       });
 
       try {
@@ -866,6 +1040,16 @@ export function createHeadRuntimeService(options: {
         }
 
         const completedAt = now();
+        const reconciledWorkingContext =
+          input.trigger.kind === 'due_task'
+            ? await reconcileDueTaskBeforeCommit({
+                completedAt,
+                dueAt: latestHeadTurn.value.dueAt,
+                repositories: options.repositories,
+                taskId: latestHeadTurn.value.taskId,
+                workingContext: latestWorkingContext,
+              })
+            : latestWorkingContext;
         const summarySnapshot =
           input.trigger.kind === 'trusted_messages'
             ? await options.workingContextSummaryService.refreshAfterTrustedTurn({
@@ -874,16 +1058,16 @@ export function createHeadRuntimeService(options: {
                 completedAt,
                 trigger: input.trigger,
                 trustedMessages: triggerState.messages,
-                workingContext: latestWorkingContext.value,
+                workingContext: reconciledWorkingContext.value,
               })
-            : buildExistingSummarySnapshot(latestWorkingContext.value, completedAt);
+            : buildExistingSummarySnapshot(reconciledWorkingContext.value, completedAt);
         const finalizedWorkingContext = applyHeadTurnCommitted({
           assistantSummary: summarySnapshot,
           completedAt,
           conversationCursor: runtimeResult.conversationCursor,
           incrementEpisodeTurnCount: true,
           readThroughSequence: latestHeadTurn.value.readThroughMessageSequence,
-          workingContext: latestWorkingContext.value,
+          workingContext: reconciledWorkingContext.value,
         });
         const finalizedTurn = await options.repositories.execution.finalizeHeadTurn({
           headTurn: {
@@ -901,7 +1085,7 @@ export function createHeadRuntimeService(options: {
           },
           headTurnEtag: latestHeadTurn.etag,
           workingContext: finalizedWorkingContext,
-          workingContextEtag: latestWorkingContext.etag,
+          workingContextEtag: reconciledWorkingContext.etag,
         });
 
         return headTurnExecutionResultSchema.parse({

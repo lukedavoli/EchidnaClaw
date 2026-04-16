@@ -256,6 +256,11 @@ function createServices(toolName: string, args: Record<string, unknown>) {
       logger: loggerFactory.createLogger({ service: 'head_runtime_test' }),
       repositories: repositoryBundle.repositories,
       repositoryConfig: loadRepositoryConfig(),
+      scheduleMutationService: {
+        async mutate() {
+          throw new Error('unused');
+        },
+      },
       taskQueueService,
       workingContextSummaryService: createWorkingContextSummaryServiceStub(),
     }),
