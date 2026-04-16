@@ -1,6 +1,7 @@
 export * from './agent-registry.js';
 export * from './concurrency.js';
 export * from './idempotency.js';
+export * from './sandbox.js';
 export * from './scheduling.js';
 export * from './state-machines.js';
 export * from './tasks.js';

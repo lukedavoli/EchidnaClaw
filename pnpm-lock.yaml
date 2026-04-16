@@ -116,9 +116,18 @@ importers:
       '@echidna-claw/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@echidna-claw/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@echidna-claw/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       fastify:
         specifier: ^5.2.1
         version: 5.8.4
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
 
   apps/web:
     dependencies:

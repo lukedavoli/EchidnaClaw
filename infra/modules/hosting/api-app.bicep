@@ -13,11 +13,13 @@ param minReplicas int = 0
 param maxReplicas int = 1
 param cosmosEndpoint string
 param cosmosDatabaseName string
-param storageAccountName string
+param blobAccountUrl string
+param uploadsContainerName string
 param artifactsContainerName string
 param keyVaultUri string
 param credentialEncryptionKeyId string
 param applicationInsightsConnectionString string
+param foundryProjectName string
 param foundryEndpoint string
 param defaultModelDeploymentName string
 param sandboxBaseUrl string
@@ -30,6 +32,10 @@ var envVars = [
     value: applicationInsightsConnectionString
   }
   {
+    name: 'ECHIDNA_MONITOR_CONNECTION_STRING'
+    value: applicationInsightsConnectionString
+  }
+  {
     name: 'ECHIDNA_API_HOST'
     value: '0.0.0.0'
   }
@@ -38,19 +44,27 @@ var envVars = [
     value: targetPort
   }
   {
-    name: 'ECHIDNA_COSMOS_ENDPOINT'
+    name: 'ECHIDNA_COSMOS_DB_ENDPOINT'
     value: cosmosEndpoint
   }
   {
-    name: 'ECHIDNA_COSMOS_DATABASE'
+    name: 'ECHIDNA_COSMOS_DB_DATABASE_NAME'
     value: cosmosDatabaseName
   }
   {
-    name: 'ECHIDNA_STORAGE_ACCOUNT'
-    value: storageAccountName
+    name: 'ECHIDNA_COSMOS_DB_CREDENTIAL_SCOPE'
+    value: 'https://cosmos.azure.com/.default'
   }
   {
-    name: 'ECHIDNA_ARTIFACTS_CONTAINER'
+    name: 'ECHIDNA_BLOB_STORAGE_ACCOUNT_URL'
+    value: blobAccountUrl
+  }
+  {
+    name: 'ECHIDNA_BLOB_STORAGE_UPLOADS_CONTAINER'
+    value: uploadsContainerName
+  }
+  {
+    name: 'ECHIDNA_BLOB_STORAGE_ARTIFACTS_CONTAINER'
     value: artifactsContainerName
   }
   {
@@ -58,15 +72,19 @@ var envVars = [
     value: keyVaultUri
   }
   {
-    name: 'ECHIDNA_CREDENTIAL_KEY_ID'
+    name: 'ECHIDNA_KEY_VAULT_KEY_ID'
     value: credentialEncryptionKeyId
   }
   {
-    name: 'ECHIDNA_FOUNDRY_ENDPOINT'
+    name: 'ECHIDNA_FOUNDRY_PROJECT_NAME'
+    value: foundryProjectName
+  }
+  {
+    name: 'ECHIDNA_FOUNDRY_PROJECT_ENDPOINT'
     value: foundryEndpoint
   }
   {
-    name: 'ECHIDNA_FOUNDRY_MODEL_DEPLOYMENT'
+    name: 'ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME'
     value: defaultModelDeploymentName
   }
   {

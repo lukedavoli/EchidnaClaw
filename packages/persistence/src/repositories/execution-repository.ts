@@ -75,10 +75,12 @@ export interface ExecutionRepository {
     taskEtag: string;
   }): Promise<HandsRunClaimResult>;
   createSandboxSession(session: SandboxSession): Promise<StoredRecord<SandboxSession>>;
+  findSandboxSession(sandboxSessionId: SandboxSessionId): Promise<StoredRecord<SandboxSession> | null>;
   getSandboxSession(
     agentId: AgentId,
     sandboxSessionId: SandboxSessionId,
   ): Promise<StoredRecord<SandboxSession> | null>;
+  listActiveSandboxSessions(agentId: AgentId): Promise<StoredRecord<SandboxSession>[]>;
   replaceSandboxSession(
     session: SandboxSession,
     expectedEtag: string,
@@ -306,11 +308,37 @@ export class DefaultExecutionRepository implements ExecutionRepository {
     return this.store.create(sandboxSessionSchema.parse(session));
   }
 
+  async findSandboxSession(
+    sandboxSessionId: SandboxSessionId,
+  ): Promise<StoredRecord<SandboxSession> | null> {
+    const results = await this.store.query({
+      containerName: operationalContainerName,
+      schema: sandboxSessionSchema,
+      where: [eq('recordType', 'sandbox_session'), eq('id', sandboxSessionId)],
+      limit: 1,
+    });
+
+    return results[0] ?? null;
+  }
+
   async getSandboxSession(
     agentId: AgentId,
     sandboxSessionId: SandboxSessionId,
   ): Promise<StoredRecord<SandboxSession> | null> {
     return this.store.get(sandboxSessionId, agentId, sandboxSessionSchema);
+  }
+
+  async listActiveSandboxSessions(agentId: AgentId): Promise<StoredRecord<SandboxSession>[]> {
+    return this.store.query({
+      containerName: operationalContainerName,
+      partitionKey: agentId,
+      schema: sandboxSessionSchema,
+      where: [
+        eq('recordType', 'sandbox_session'),
+        inList('state', ['created', 'running']),
+      ],
+      orderBy: [{ field: 'createdAt', direction: 'asc' }],
+    });
   }
 
   async replaceSandboxSession(

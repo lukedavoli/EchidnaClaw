@@ -9,6 +9,7 @@ import {
 import {
   agentIdSchema,
   approvalIdSchema,
+  artifactIdSchema,
   channelIdSchema,
   credentialIdSchema,
   handsRunIdSchema,
@@ -55,10 +56,68 @@ export const handsReleaseForUserRequestSchema = z
 
 export const sandboxCreateSessionRequestSchema = z
   .object({
+    agentId: agentIdSchema,
     taskId: taskIdSchema,
     handsRunId: handsRunIdSchema,
     policyName: nonEmptyStringSchema,
+    packageAllowlistName: nonEmptyStringSchema.optional(),
+    credentialAliases: z.array(nonEmptyStringSchema).default([]),
     workingDirectory: nonEmptyStringSchema.optional(),
+    workspaceLabel: nonEmptyStringSchema.optional(),
+    correlation: correlationMetadataSchema,
+  })
+  .strict();
+
+export const sandboxProvisionSessionRequestSchema = sandboxCreateSessionRequestSchema
+  .extend({
+    sessionId: sandboxSessionIdSchema,
+  })
+  .strict();
+
+export const sandboxShellSchema = z.enum(['default', 'bash', 'pwsh']);
+
+export const sandboxCommandStatusSchema = z.enum([
+  'completed',
+  'failed',
+  'timed_out',
+  'cancelled',
+  'policy_denied',
+]);
+
+export const sandboxExecuteCommandRequestSchema = z
+  .object({
+    sessionId: sandboxSessionIdSchema,
+    command: nonEmptyStringSchema,
+    shell: sandboxShellSchema.default('default'),
+    timeoutMs: positiveIntegerSchema.optional(),
+    workingDirectory: nonEmptyStringSchema.optional(),
+    correlation: correlationMetadataSchema,
+  })
+  .strict();
+
+export const sandboxExecuteCommandResultSchema = z
+  .object({
+    sessionId: sandboxSessionIdSchema,
+    status: sandboxCommandStatusSchema,
+    startedAt: isoDateTimeSchema,
+    completedAt: isoDateTimeSchema,
+    durationMs: z.number().int().nonnegative(),
+    exitCode: z.number().int().nullable(),
+    signal: z.string().trim().nullable(),
+    stdoutText: z.string(),
+    stderrText: z.string(),
+    outputTruncated: z.boolean(),
+    resolvedWorkingDirectory: nonEmptyStringSchema,
+    artifactIds: z.array(artifactIdSchema).default([]),
+    failureCode: nonEmptyStringSchema.optional(),
+    failureMessage: z.string().trim().optional(),
+  })
+  .strict();
+
+export const sandboxCloseSessionRequestSchema = z
+  .object({
+    sessionId: sandboxSessionIdSchema,
+    reason: z.enum(['completed', 'cancelled', 'cleanup']).default('completed'),
     correlation: correlationMetadataSchema,
   })
   .strict();
@@ -202,6 +261,12 @@ export const channelActionResponseSchema = z.discriminatedUnion('kind', [
 export type HandsStartRunRequest = z.infer<typeof handsStartRunRequestSchema>;
 export type HandsReleaseForUserRequest = z.infer<typeof handsReleaseForUserRequestSchema>;
 export type SandboxCreateSessionRequest = z.infer<typeof sandboxCreateSessionRequestSchema>;
+export type SandboxProvisionSessionRequest = z.infer<typeof sandboxProvisionSessionRequestSchema>;
+export type SandboxShell = z.infer<typeof sandboxShellSchema>;
+export type SandboxCommandStatus = z.infer<typeof sandboxCommandStatusSchema>;
+export type SandboxExecuteCommandRequest = z.infer<typeof sandboxExecuteCommandRequestSchema>;
+export type SandboxExecuteCommandResult = z.infer<typeof sandboxExecuteCommandResultSchema>;
+export type SandboxCloseSessionRequest = z.infer<typeof sandboxCloseSessionRequestSchema>;
 export type SchedulerMaterializeDueSchedulesRequest = z.infer<
   typeof schedulerMaterializeDueSchedulesRequestSchema
 >;
@@ -239,7 +304,9 @@ export interface HandsService {
 
 export interface SandboxService {
   createSession(input: SandboxCreateSessionRequest): Promise<SandboxSession>;
-  closeSession(sessionId: z.infer<typeof sandboxSessionIdSchema>): Promise<SandboxSession>;
+  executeCommand(input: SandboxExecuteCommandRequest): Promise<SandboxExecuteCommandResult>;
+  getSession(sessionId: z.infer<typeof sandboxSessionIdSchema>): Promise<SandboxSession>;
+  closeSession(input: SandboxCloseSessionRequest): Promise<SandboxSession>;
 }
 
 export interface SchedulerService {

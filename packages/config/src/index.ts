@@ -100,6 +100,13 @@ const apiEnvSchema = sharedEnvSchema.extend({
 const sandboxEnvSchema = sharedEnvSchema.extend({
   ECHIDNA_SANDBOX_HOST: z.string().min(1).default('127.0.0.1'),
   ECHIDNA_SANDBOX_PORT: z.coerce.number().int().min(1).max(65535).default(3002),
+  ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: optionalNonEmptyStringSchema,
+  ECHIDNA_SANDBOX_WORKSPACE_ROOT: optionalNonEmptyStringSchema,
+  ECHIDNA_SANDBOX_CLEANUP_TTL_MS: z.coerce.number().int().positive().default(3600000),
+  ECHIDNA_SANDBOX_DEFAULT_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+  ECHIDNA_SANDBOX_MAX_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
+  ECHIDNA_SANDBOX_DEFAULT_OUTPUT_LIMIT_BYTES: z.coerce.number().int().positive().default(32768),
+  ECHIDNA_SANDBOX_STARTUP_CLEANUP_ENABLED: optionalBooleanSchema,
 });
 
 const handsEnvSchema = sharedEnvSchema.extend({
@@ -130,6 +137,10 @@ const apiRemoteDependencyEnvSchema = z.object({
   ECHIDNA_HANDS_JOB_TARGET: z.string().trim().min(1),
   ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME: z.string().trim().min(1),
   ECHIDNA_TELEGRAM_WEBHOOK_SECRET_TOKEN: z.string().trim().min(1),
+  ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: z.string().trim().min(1),
+});
+
+const sandboxRemoteDependencyEnvSchema = z.object({
   ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: z.string().trim().min(1),
 });
 
@@ -206,7 +217,14 @@ export type ApiConfig = BaseServiceConfig &
 export type SandboxConfig = BaseServiceConfig & {
   serviceName: 'sandbox';
   host: string;
+  internalAuthToken: string;
+  cleanupTtlMs: number;
+  defaultOutputLimitBytes: number;
+  defaultTimeoutMs: number;
+  maxTimeoutMs: number;
   port: number;
+  startupCleanupEnabled: boolean;
+  workspaceRoot: string;
 };
 export type HandsConfig = BaseServiceConfig & {
   serviceName: 'hands';
@@ -245,6 +263,10 @@ function parseEnv<TSchema extends z.ZodTypeAny>(
 
 function resolveDefaultHandsLivenessFile(): string {
   return resolve(tmpdir(), 'echidna-claw', 'hands-liveness.json');
+}
+
+function resolveDefaultSandboxWorkspaceRoot(): string {
+  return resolve(tmpdir(), 'echidna-claw', 'sandbox-workspaces');
 }
 
 function loadSharedCloudDependencies(
@@ -388,11 +410,23 @@ export function loadSandboxConfig(source: EnvSource = process.env): SandboxConfi
   }
 
   const env = parseEnv(sandboxEnvSchema, source);
+  const internalAuthToken =
+    env.ECHIDNA_RUNTIME_MODE === 'local-minimal'
+      ? env.ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN ?? 'local-internal-runtime-token'
+      : parseEnv(sandboxRemoteDependencyEnvSchema, source).ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN;
+
   return {
     ...buildBaseServiceConfig(source, env),
     serviceName: 'sandbox',
     host: env.ECHIDNA_SANDBOX_HOST,
+    internalAuthToken,
+    cleanupTtlMs: env.ECHIDNA_SANDBOX_CLEANUP_TTL_MS,
+    defaultOutputLimitBytes: env.ECHIDNA_SANDBOX_DEFAULT_OUTPUT_LIMIT_BYTES,
+    defaultTimeoutMs: env.ECHIDNA_SANDBOX_DEFAULT_TIMEOUT_MS,
+    maxTimeoutMs: env.ECHIDNA_SANDBOX_MAX_TIMEOUT_MS,
     port: env.ECHIDNA_SANDBOX_PORT,
+    startupCleanupEnabled: env.ECHIDNA_SANDBOX_STARTUP_CLEANUP_ENABLED ?? true,
+    workspaceRoot: env.ECHIDNA_SANDBOX_WORKSPACE_ROOT ?? resolveDefaultSandboxWorkspaceRoot(),
   };
 }
 

@@ -16,6 +16,8 @@ import {
   outboundMessageSchema,
   readinessResponseSchema,
   repositoryConfigSchema,
+  sandboxExecuteCommandRequestSchema,
+  sandboxExecuteCommandResultSchema,
   sandboxSessionSchema,
   sendChannelMessageRequestSchema,
   taskSchema,
@@ -284,8 +286,24 @@ describe('contracts schemas', () => {
       taskId: task.id,
       state: 'created',
       policyName: 'standard',
+      workspaceRoot: '/tmp/echidna/sbx_step-2',
+      workingDirectory: '/tmp/echidna/sbx_step-2/work',
+      resourceProfile: {
+        defaultTimeoutMs: 10000,
+        maxTimeoutMs: 60000,
+        maxOutputBytes: 32768,
+        maxMemoryMb: 1024,
+        maxCpuSeconds: 30,
+      },
+      packageAllowlistName: 'default-runtime-pnpm',
+      credentialAliases: [],
+      commandCount: 0,
+      lastCommandStartedAt: null,
+      lastCommandCompletedAt: null,
+      closedReason: null,
+      failureCode: null,
       allowedOutboundHosts: ['api.telegram.org'],
-      startedAt: null,
+      startedAt: timestamp,
       completedAt: null,
     });
 
@@ -365,6 +383,41 @@ describe('contracts schemas', () => {
     ).toMatchObject({
       decision: 'approve',
       kind: 'approval_decision',
+    });
+  });
+
+  it('parses sandbox execution requests and structured results', () => {
+    expect(
+      sandboxExecuteCommandRequestSchema.parse({
+        sessionId: 'sbx_step-2',
+        command: 'echo hello',
+        correlation,
+      }),
+    ).toMatchObject({
+      sessionId: 'sbx_step-2',
+      command: 'echo hello',
+      shell: 'default',
+    });
+
+    expect(
+      sandboxExecuteCommandResultSchema.parse({
+        sessionId: 'sbx_step-2',
+        status: 'completed',
+        startedAt: timestamp,
+        completedAt: timestamp,
+        durationMs: 42,
+        exitCode: 0,
+        signal: null,
+        stdoutText: 'hello',
+        stderrText: '',
+        outputTruncated: false,
+        resolvedWorkingDirectory: '/tmp/echidna/sbx_step-2/work',
+        artifactIds: [],
+      }),
+    ).toMatchObject({
+      sessionId: 'sbx_step-2',
+      status: 'completed',
+      resolvedWorkingDirectory: '/tmp/echidna/sbx_step-2/work',
     });
   });
 
@@ -499,8 +552,16 @@ describe('contracts schemas', () => {
           defaultModel: 'gpt-5.4-mini',
           pricing: [],
         },
+        agents: {
+          factoryProfile: {
+            version: 'factory-v1',
+            defaultTimeZone: 'Australia/Sydney',
+            initialResponsibilitiesSummary: '',
+          },
+        },
         sandbox: {
           defaultPolicy: 'missing',
+          defaultPackageAllowlist: 'missing',
           policies: [],
           packageAllowlists: [],
         },

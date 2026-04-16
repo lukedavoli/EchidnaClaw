@@ -1,6 +1,7 @@
 param name string
 param location string
 param tags object = {}
+param uploadsContainerName string = 'uploads'
 param artifactsContainerName string = 'artifacts'
 param retentionDays int = 14
 param contributorPrincipalIds array = []
@@ -32,6 +33,14 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
 
 resource artifactsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   name: artifactsContainerName
+  parent: blobService
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+resource uploadsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  name: uploadsContainerName
   parent: blobService
   properties: {
     publicAccess: 'None'
@@ -108,4 +117,5 @@ resource readerAssignments 'Microsoft.Authorization/roleAssignments@2022-04-01' 
 output accountResourceId string = storageAccount.id
 output accountName string = storageAccount.name
 output blobEndpoint string = storageAccount.properties.primaryEndpoints.blob
+output uploadsContainerName string = uploadsContainerName
 output artifactsContainerName string = artifactsContainerName

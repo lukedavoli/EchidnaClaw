@@ -33,6 +33,7 @@ Compose defaults:
 - web: `http://127.0.0.1:4173`
 - API health: `http://127.0.0.1:3001/healthz`
 - sandbox health: `http://127.0.0.1:3002/healthz`
+- Hands liveness: `.compose/hands/hands-liveness.json`
 
 ## Shared-Cloud Contract
 

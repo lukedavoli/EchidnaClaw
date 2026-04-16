@@ -2,8 +2,6 @@ import type {
   HandsReleaseForUserRequest,
   HandsRun,
   HandsStartRunRequest,
-  SandboxCreateSessionRequest,
-  SandboxSession,
   SchedulerMaterializeDueSchedulesRequest,
   Task,
 } from '@echidna-claw/contracts';
@@ -15,17 +13,13 @@ export interface HandsJobTriggerAdapter {
   startRun(input: HandsStartRunRequest): Promise<HandsRun>;
 }
 
-export interface SandboxRuntimeAdapter {
-  createSession(input: SandboxCreateSessionRequest): Promise<SandboxSession>;
-}
-
 export interface SchedulerRuntimeAdapter {
   materializeDueSchedules(input: SchedulerMaterializeDueSchedulesRequest): Promise<Task[]>;
 }
 
 export function createRuntimeAdapters(mode: 'stubbed' | 'configured_placeholder'): {
   health: Record<
-    'handsJobs' | 'sandboxRuntime' | 'schedulerRuntime',
+    'handsJobs' | 'schedulerRuntime',
     {
       description: string;
       mode: 'stubbed' | 'configured_placeholder';
@@ -34,7 +28,6 @@ export function createRuntimeAdapters(mode: 'stubbed' | 'configured_placeholder'
   >;
   runtime: {
     handsJobs: HandsJobTriggerAdapter;
-    sandboxRuntime: SandboxRuntimeAdapter;
     schedulerRuntime: SchedulerRuntimeAdapter;
   };
 } {
@@ -47,11 +40,6 @@ export function createRuntimeAdapters(mode: 'stubbed' | 'configured_placeholder'
     health: {
       handsJobs: {
         description: `Hands job trigger: ${modeDescription}`,
-        mode,
-        ready: true,
-      },
-      sandboxRuntime: {
-        description: `Sandbox runtime bridge: ${modeDescription}`,
         mode,
         ready: true,
       },
@@ -70,12 +58,6 @@ export function createRuntimeAdapters(mode: 'stubbed' | 'configured_placeholder'
         async startRun(_input: HandsStartRunRequest): Promise<HandsRun> {
           void _input;
           throw new NotImplementedYetError('Hands job starts are reserved for Step 13.');
-        },
-      },
-      sandboxRuntime: {
-        async createSession(_input: SandboxCreateSessionRequest): Promise<SandboxSession> {
-          void _input;
-          throw new NotImplementedYetError('Sandbox session creation is reserved for Step 14.');
         },
       },
       schedulerRuntime: {

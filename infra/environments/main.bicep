@@ -43,6 +43,7 @@ var uniqueSuffix = take(toLower(uniqueString(subscription().subscriptionId, reso
 var projectCode = toLower(replace(namePrefix, '-', ''))
 var envCode = toLower(replace(environmentName, '-', ''))
 var compactGlobalNameSuffix = '${projectCode}${envCode}${uniqueSuffix}'
+var uploadsContainerName = 'blob-uploads-${environmentName}'
 var artifactsContainerName = 'blob-artifacts-${environmentName}'
 
 var names = {
@@ -169,6 +170,7 @@ module storage '../modules/data/storage-account.bicep' = {
     name: names.storage
     location: location
     tags: normalizedTags
+    uploadsContainerName: uploadsContainerName
     artifactsContainerName: artifactsContainerName
     retentionDays: storageRetentionDays
     contributorPrincipalIds: [
@@ -253,11 +255,13 @@ module sandboxApp '../modules/hosting/sandbox-app.bicep' = {
     targetPort: sandboxWorkload.targetPort
     cosmosEndpoint: cosmos.outputs.accountEndpoint
     cosmosDatabaseName: cosmos.outputs.databaseName
-    storageAccountName: storage.outputs.accountName
+    blobAccountUrl: storage.outputs.blobEndpoint
+    uploadsContainerName: storage.outputs.uploadsContainerName
     artifactsContainerName: storage.outputs.artifactsContainerName
     keyVaultUri: keyVault.outputs.vaultUri
     credentialEncryptionKeyId: keyVault.outputs.keyId
     applicationInsightsConnectionString: appInsights.outputs.connectionString
+    foundryProjectName: foundryProjectName
     foundryEndpoint: foundryContract.outputs.endpoint
     defaultModelDeploymentName: foundryContract.outputs.defaultModelDeploymentName
     secretReferences: workloadBindings.sandbox
@@ -283,11 +287,13 @@ module apiApp '../modules/hosting/api-app.bicep' = {
     targetPort: apiWorkload.targetPort
     cosmosEndpoint: cosmos.outputs.accountEndpoint
     cosmosDatabaseName: cosmos.outputs.databaseName
-    storageAccountName: storage.outputs.accountName
+    blobAccountUrl: storage.outputs.blobEndpoint
+    uploadsContainerName: storage.outputs.uploadsContainerName
     artifactsContainerName: storage.outputs.artifactsContainerName
     keyVaultUri: keyVault.outputs.vaultUri
     credentialEncryptionKeyId: keyVault.outputs.keyId
     applicationInsightsConnectionString: appInsights.outputs.connectionString
+    foundryProjectName: foundryProjectName
     foundryEndpoint: foundryContract.outputs.endpoint
     defaultModelDeploymentName: foundryContract.outputs.defaultModelDeploymentName
     sandboxBaseUrl: sandboxApp.outputs.internalUrl
@@ -315,11 +321,13 @@ module handsJob '../modules/hosting/hands-job.bicep' = {
     args: handsJobConfig.args
     cosmosEndpoint: cosmos.outputs.accountEndpoint
     cosmosDatabaseName: cosmos.outputs.databaseName
-    storageAccountName: storage.outputs.accountName
+    blobAccountUrl: storage.outputs.blobEndpoint
+    uploadsContainerName: storage.outputs.uploadsContainerName
     artifactsContainerName: storage.outputs.artifactsContainerName
     keyVaultUri: keyVault.outputs.vaultUri
     credentialEncryptionKeyId: keyVault.outputs.keyId
     applicationInsightsConnectionString: appInsights.outputs.connectionString
+    foundryProjectName: foundryProjectName
     foundryEndpoint: foundryContract.outputs.endpoint
     defaultModelDeploymentName: foundryContract.outputs.defaultModelDeploymentName
     sandboxBaseUrl: sandboxApp.outputs.internalUrl
@@ -348,11 +356,13 @@ module schedulerJob '../modules/hosting/scheduler-job.bicep' = {
     args: schedulerJobConfig.args
     cosmosEndpoint: cosmos.outputs.accountEndpoint
     cosmosDatabaseName: cosmos.outputs.databaseName
-    storageAccountName: storage.outputs.accountName
+    blobAccountUrl: storage.outputs.blobEndpoint
+    uploadsContainerName: storage.outputs.uploadsContainerName
     artifactsContainerName: storage.outputs.artifactsContainerName
     keyVaultUri: keyVault.outputs.vaultUri
     credentialEncryptionKeyId: keyVault.outputs.keyId
     applicationInsightsConnectionString: appInsights.outputs.connectionString
+    foundryProjectName: foundryProjectName
     foundryEndpoint: foundryContract.outputs.endpoint
     defaultModelDeploymentName: foundryContract.outputs.defaultModelDeploymentName
     sandboxBaseUrl: sandboxApp.outputs.internalUrl
@@ -391,6 +401,7 @@ output containerRegistryLoginServer string = containerRegistry.outputs.loginServ
 output cosmosEndpoint string = cosmos.outputs.accountEndpoint
 output cosmosDatabaseName string = cosmos.outputs.databaseName
 output storageAccountName string = storage.outputs.accountName
+output uploadsContainerName string = storage.outputs.uploadsContainerName
 output artifactsContainerName string = storage.outputs.artifactsContainerName
 output blobEndpoint string = storage.outputs.blobEndpoint
 output keyVaultUri string = keyVault.outputs.vaultUri

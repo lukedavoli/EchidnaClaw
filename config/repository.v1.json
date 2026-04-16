@@ -22,39 +22,76 @@
   },
   "sandbox": {
     "defaultPolicy": "standard",
+    "defaultPackageAllowlist": "default-runtime-pnpm",
     "policies": [
       {
         "name": "standard",
         "description": "Default v1 sandbox policy for trusted shell execution under bounded workspace rules.",
         "allowFilesystemWriteUnder": [
-          "/workspace",
-          "/tmp"
+          "/work",
+          "/artifacts",
+          "/home"
+        ],
+        "blockFilesystemPaths": [
+          "/work/.git",
+          "/home/.ssh",
+          "/home/.azure",
+          "/proc",
+          "/sys"
         ],
         "allowOutboundHosts": [
           "api.telegram.org",
+          "files.pythonhosted.org",
+          "github.com",
           "management.azure.com",
           "login.microsoftonline.com",
+          "pypi.org",
+          "raw.githubusercontent.com",
+          "registry.npmjs.org",
           "*.openai.azure.com"
+        ],
+        "blockOutboundHosts": [
+          "127.0.0.1",
+          "169.254.169.254",
+          "::1",
+          "host.docker.internal",
+          "kubernetes.default.svc",
+          "localhost",
+          "metadata.azure.internal"
         ],
         "allowCommands": [
           "az",
           "bash",
+          "cat",
+          "cd",
           "curl",
+          "echo",
           "git",
+          "ls",
+          "mkdir",
           "node",
           "npm",
           "npx",
           "pnpm",
+          "pwd",
           "pwsh",
           "python",
           "python3",
           "sh"
-        ]
+        ],
+        "resourceLimits": {
+          "defaultTimeoutMs": 10000,
+          "maxTimeoutMs": 60000,
+          "maxOutputBytes": 32768,
+          "maxMemoryMb": 1024,
+          "maxCpuSeconds": 30
+        }
       }
     ],
     "packageAllowlists": [
       {
-        "name": "default-runtime",
+        "name": "default-runtime-npm",
+        "packageManager": "npm",
         "packages": [
           "@azure/*",
           "dotenv",
@@ -64,6 +101,29 @@
           "tsx",
           "vitest",
           "zod"
+        ]
+      },
+      {
+        "name": "default-runtime-pnpm",
+        "packageManager": "pnpm",
+        "packages": [
+          "@azure/*",
+          "dotenv",
+          "fastify",
+          "react",
+          "react-dom",
+          "tsx",
+          "vitest",
+          "zod"
+        ]
+      },
+      {
+        "name": "default-runtime-pip",
+        "packageManager": "pip",
+        "packages": [
+          "pydantic",
+          "pytest",
+          "requests"
         ]
       }
     ]

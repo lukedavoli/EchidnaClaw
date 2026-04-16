@@ -17,6 +17,7 @@ x-shared-runtime-env: &shared-runtime-env
   ECHIDNA_FOUNDRY_PROJECT_NAME: ${ECHIDNA_FOUNDRY_PROJECT_NAME:-}
   ECHIDNA_FOUNDRY_PROJECT_ENDPOINT: ${ECHIDNA_FOUNDRY_PROJECT_ENDPOINT:-}
   ECHIDNA_MONITOR_CONNECTION_STRING: ${ECHIDNA_MONITOR_CONNECTION_STRING:-}
+  ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN: ${ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN:-local-internal-runtime-token}
 
 services:
   web:
@@ -47,9 +48,13 @@ services:
       <<: *shared-runtime-env
       ECHIDNA_API_HOST: 0.0.0.0
       ECHIDNA_API_PORT: ${ECHIDNA_API_PORT:-3001}
+      ECHIDNA_SANDBOX_BASE_URL: http://sandbox:${ECHIDNA_SANDBOX_PORT:-3002}
       ECHIDNA_WEB_PUBLIC_BASE_URL: http://127.0.0.1:4173
     ports:
       - '${ECHIDNA_API_PORT:-3001}:${ECHIDNA_API_PORT:-3001}'
+    depends_on:
+      sandbox:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD-SHELL
@@ -67,6 +72,12 @@ services:
       <<: *shared-runtime-env
       ECHIDNA_SANDBOX_HOST: 0.0.0.0
       ECHIDNA_SANDBOX_PORT: ${ECHIDNA_SANDBOX_PORT:-3002}
+      ECHIDNA_SANDBOX_WORKSPACE_ROOT: /sandbox/workspaces
+      ECHIDNA_SANDBOX_CLEANUP_TTL_MS: ${ECHIDNA_SANDBOX_CLEANUP_TTL_MS:-3600000}
+      ECHIDNA_SANDBOX_DEFAULT_TIMEOUT_MS: ${ECHIDNA_SANDBOX_DEFAULT_TIMEOUT_MS:-10000}
+      ECHIDNA_SANDBOX_MAX_TIMEOUT_MS: ${ECHIDNA_SANDBOX_MAX_TIMEOUT_MS:-60000}
+      ECHIDNA_SANDBOX_DEFAULT_OUTPUT_LIMIT_BYTES: ${ECHIDNA_SANDBOX_DEFAULT_OUTPUT_LIMIT_BYTES:-32768}
+      ECHIDNA_SANDBOX_STARTUP_CLEANUP_ENABLED: ${ECHIDNA_SANDBOX_STARTUP_CLEANUP_ENABLED:-true}
       ECHIDNA_WEB_PUBLIC_BASE_URL: http://127.0.0.1:4173
     ports:
       - '${ECHIDNA_SANDBOX_PORT:-3002}:${ECHIDNA_SANDBOX_PORT:-3002}'
@@ -86,5 +97,19 @@ services:
     environment:
       <<: *shared-runtime-env
       ECHIDNA_HANDS_HEARTBEAT_INTERVAL_MS: ${ECHIDNA_HANDS_HEARTBEAT_INTERVAL_MS:-30000}
-      ECHIDNA_HANDS_LIVENESS_FILE: /tmp/echidna-claw/hands-liveness.json
+      ECHIDNA_HANDS_LIVENESS_FILE: /hands-liveness/hands-liveness.json
+      ECHIDNA_SANDBOX_BASE_URL: http://sandbox:${ECHIDNA_SANDBOX_PORT:-3002}
       ECHIDNA_WEB_PUBLIC_BASE_URL: http://127.0.0.1:4173
+    depends_on:
+      sandbox:
+        condition: service_healthy
+    volumes:
+      - ./.compose/hands:/hands-liveness
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -f "$${ECHIDNA_HANDS_LIVENESS_FILE:-/hands-liveness/hands-liveness.json}"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s

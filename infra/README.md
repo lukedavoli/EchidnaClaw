@@ -56,6 +56,7 @@ The top-level template emits the values later steps need for runtime wiring:
 - `cosmosEndpoint`
 - `cosmosDatabaseName`
 - `storageAccountName`
+- `uploadsContainerName`
 - `artifactsContainerName`
 - `blobEndpoint`
 - `keyVaultUri`

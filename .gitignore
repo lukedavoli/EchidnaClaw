@@ -6,6 +6,7 @@ dist/
 coverage/
 .cache/
 .vite/
+.compose/
 
 .env
 .env.local

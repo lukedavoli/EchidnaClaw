@@ -1,4 +1,12 @@
-import { type AgentId, type ExternalReference, type HandsRunId, type ScheduleId } from '@echidna-claw/contracts';
+import { createHash } from 'node:crypto';
+
+import {
+  type AgentId,
+  type ExternalReference,
+  type HandsRunId,
+  type SandboxSessionId,
+  type ScheduleId,
+} from '@echidna-claw/contracts';
 
 function normalizePart(value: string): string {
   return value
@@ -12,6 +20,10 @@ function normalizePart(value: string): string {
 function createKey(prefix: string, parts: readonly string[]): string {
   const normalizedParts = parts.map((part) => normalizePart(part) || 'x');
   return `${prefix}_${normalizedParts.join('-')}`;
+}
+
+function createDeterministicIdentifier(prefix: string, source: string): string {
+  return `${prefix}_${createHash('sha256').update(source).digest('hex').slice(0, 24)}`;
 }
 
 export function createInboundMessageIdempotencyKey(agentId: AgentId, externalUpdateId: string): string {
@@ -57,6 +69,17 @@ export function createApprovalIdempotencyKey(taskId: string, approvalSummary: st
 
 export function createSandboxSessionIdempotencyKey(handsRunId: HandsRunId, policyName: string): string {
   return createKey('idem', [handsRunId, policyName]);
+}
+
+export function createDeterministicSandboxSessionId(
+  agentId: AgentId,
+  handsRunId: HandsRunId,
+  policyName: string,
+): SandboxSessionId {
+  return createDeterministicIdentifier(
+    'sbx',
+    `sandbox-session:${agentId}:${handsRunId}:${policyName}`,
+  ) as SandboxSessionId;
 }
 
 export function createTaskStartRequestIdempotencyKey(

@@ -60,18 +60,29 @@ const repositoryConfig = {
   },
   sandbox: {
     defaultPolicy: 'standard',
+    defaultPackageAllowlist: 'default-runtime-pnpm',
     policies: [
       {
         name: 'standard',
         description: 'Default policy.',
-        allowFilesystemWriteUnder: ['/workspace'],
+        allowFilesystemWriteUnder: ['/work'],
+        blockFilesystemPaths: ['/work/.git'],
         allowOutboundHosts: ['api.telegram.org'],
+        blockOutboundHosts: ['169.254.169.254'],
         allowCommands: ['pnpm'],
+        resourceLimits: {
+          defaultTimeoutMs: 10000,
+          maxTimeoutMs: 60000,
+          maxOutputBytes: 32768,
+          maxMemoryMb: 1024,
+          maxCpuSeconds: 30,
+        },
       },
     ],
     packageAllowlists: [
       {
-        name: 'default-runtime',
+        name: 'default-runtime-pnpm',
+        packageManager: 'pnpm',
         packages: ['zod'],
       },
     ],

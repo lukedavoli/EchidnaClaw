@@ -4,11 +4,11 @@ import { createFoundryAdapters, type FoundryAdapters } from './foundry/index.js'
 import {
   createRuntimeAdapters,
   type HandsJobTriggerAdapter,
-  type SandboxRuntimeAdapter,
   type SchedulerRuntimeAdapter,
 } from './jobs/index.js';
 import { createKeyVaultAdapters, type KeyVaultAdapters } from './key-vault/index.js';
 import { createRepositoryBundle, type RepositoryBundle } from './repositories/index.js';
+import { createSandboxRuntimeAdapter, type SandboxRuntimeAdapter } from './sandbox/index.js';
 import {
   createTelegramTransportAdapter,
   type TelegramBotApiAdapter,
@@ -44,6 +44,7 @@ export function createExternalAdapters(config: ApiRuntimeConfig): {
   const keyVault = createKeyVaultAdapters(placeholderMode);
   const artifactStorage = createArtifactStorageAdapter(placeholderMode);
   const runtime = createRuntimeAdapters(placeholderMode);
+  const sandbox = createSandboxRuntimeAdapter(config);
   const telegram = createTelegramTransportAdapter(config);
 
   return {
@@ -53,7 +54,7 @@ export function createExternalAdapters(config: ApiRuntimeConfig): {
       handsJobs: runtime.runtime.handsJobs,
       keyVault: keyVault.adapters,
       repositories: repositories.repositories,
-      sandboxRuntime: runtime.runtime.sandboxRuntime,
+      sandboxRuntime: sandbox.adapter,
       schedulerRuntime: runtime.runtime.schedulerRuntime,
       telegramBotApi: telegram.adapter,
     },
@@ -63,7 +64,7 @@ export function createExternalAdapters(config: ApiRuntimeConfig): {
       handsJobs: runtime.health.handsJobs,
       keyVault: keyVault.health,
       repositories: repositories.health,
-      sandboxRuntime: runtime.health.sandboxRuntime,
+      sandboxRuntime: sandbox.health,
       schedulerRuntime: runtime.health.schedulerRuntime,
       telegramBotApi: telegram.health,
     },

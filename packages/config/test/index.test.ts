@@ -44,6 +44,17 @@ describe('@echidna-claw/config', () => {
     ).toThrow();
   });
 
+  it('hydrates sandbox runtime defaults for local development', () => {
+    const config = loadSandboxConfig({});
+
+    expect(config.internalAuthToken).toBe('local-internal-runtime-token');
+    expect(config.workspaceRoot).toContain('sandbox-workspaces');
+    expect(config.defaultTimeoutMs).toBe(10000);
+    expect(config.maxTimeoutMs).toBe(60000);
+    expect(config.defaultOutputLimitBytes).toBe(32768);
+    expect(config.startupCleanupEnabled).toBe(true);
+  });
+
   it('fails fast when shared-cloud API startup is missing protected-route settings', () => {
     expect(() =>
       loadApiConfig({

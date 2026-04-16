@@ -524,16 +524,35 @@ export const handsRunSchema = createRecordSchema('hands_run', handsRunIdSchema, 
   releasedAt: isoDateTimeSchema.nullable(),
 });
 
+export const sandboxResourceProfileSchema = z
+  .object({
+    defaultTimeoutMs: positiveIntegerSchema,
+    maxTimeoutMs: positiveIntegerSchema,
+    maxOutputBytes: positiveIntegerSchema,
+    maxMemoryMb: positiveIntegerSchema,
+    maxCpuSeconds: positiveIntegerSchema,
+  })
+  .strict();
+
 export const sandboxSessionSchema = createRecordSchema('sandbox_session', sandboxSessionIdSchema, {
   agentId: agentIdSchema,
   handsRunId: handsRunIdSchema,
   taskId: taskIdSchema,
   state: sandboxSessionStateSchema,
   policyName: nonEmptyStringSchema,
-  workingDirectory: nonEmptyStringSchema.optional(),
+  workspaceRoot: nonEmptyStringSchema,
+  workingDirectory: nonEmptyStringSchema,
+  resourceProfile: sandboxResourceProfileSchema,
+  packageAllowlistName: nonEmptyStringSchema.nullable().default(null),
+  credentialAliases: z.array(nonEmptyStringSchema).default([]),
+  commandCount: z.number().int().nonnegative().default(0),
+  lastCommandStartedAt: isoDateTimeSchema.nullable().default(null),
+  lastCommandCompletedAt: isoDateTimeSchema.nullable().default(null),
+  closedReason: z.string().trim().nullable().default(null),
+  failureCode: z.string().trim().nullable().default(null),
   allowedOutboundHosts: z.array(nonEmptyStringSchema).default([]),
-  startedAt: isoDateTimeSchema.nullable(),
-  completedAt: isoDateTimeSchema.nullable(),
+  startedAt: isoDateTimeSchema.nullable().default(null),
+  completedAt: isoDateTimeSchema.nullable().default(null),
 });
 
 export type ArtifactLink = z.infer<typeof artifactLinkSchema>;
@@ -588,6 +607,7 @@ export type RunJournal = z.infer<typeof runJournalSchema>;
 export type RunJournalEntry = z.infer<typeof runJournalEntrySchema>;
 export type HeadTurn = z.infer<typeof headTurnSchema>;
 export type HandsRun = z.infer<typeof handsRunSchema>;
+export type SandboxResourceProfile = z.infer<typeof sandboxResourceProfileSchema>;
 export type SandboxSession = z.infer<typeof sandboxSessionSchema>;
 
 export const platformRecordSchema = z.discriminatedUnion('recordType', [

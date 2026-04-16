@@ -18,14 +18,28 @@ export const sandboxPolicySchema = z
     name: nonEmptyStringSchema,
     description: nonEmptyStringSchema,
     allowFilesystemWriteUnder: z.array(nonEmptyStringSchema).min(1),
-    allowOutboundHosts: z.array(nonEmptyStringSchema).min(1),
+    blockFilesystemPaths: z.array(nonEmptyStringSchema).default([]),
+    allowOutboundHosts: z.array(nonEmptyStringSchema).default([]),
+    blockOutboundHosts: z.array(nonEmptyStringSchema).default([]),
     allowCommands: z.array(nonEmptyStringSchema).min(1),
+    resourceLimits: z
+      .object({
+        defaultTimeoutMs: z.number().int().positive(),
+        maxTimeoutMs: z.number().int().positive(),
+        maxOutputBytes: z.number().int().positive(),
+        maxMemoryMb: z.number().int().positive(),
+        maxCpuSeconds: z.number().int().positive(),
+      })
+      .strict(),
   })
   .strict();
+
+export const sandboxPackageManagerSchema = z.enum(['npm', 'pnpm', 'pip']);
 
 export const packageAllowlistSchema = z
   .object({
     name: nonEmptyStringSchema,
+    packageManager: sandboxPackageManagerSchema,
     packages: z.array(nonEmptyStringSchema).min(1),
   })
   .strict();
@@ -64,6 +78,7 @@ export const repositoryConfigSchema = z
     sandbox: z
       .object({
         defaultPolicy: nonEmptyStringSchema,
+        defaultPackageAllowlist: nonEmptyStringSchema,
         policies: z.array(sandboxPolicySchema).min(1),
         packageAllowlists: z.array(packageAllowlistSchema).min(1),
       })
@@ -117,6 +132,14 @@ export const repositoryConfigSchema = z
       allowlistNames.add(allowlist.name);
     }
 
+    if (!allowlistNames.has(value.sandbox.defaultPackageAllowlist)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sandbox', 'defaultPackageAllowlist'],
+        message: 'Default package allowlist must exist in sandbox.packageAllowlists',
+      });
+    }
+
     const capabilityIds = new Set<string>();
     for (const capability of value.capabilities.registry) {
       if (capabilityIds.has(capability.id)) {
@@ -132,6 +155,7 @@ export const repositoryConfigSchema = z
 
 export type ModelPricing = z.infer<typeof modelPricingSchema>;
 export type SandboxPolicy = z.infer<typeof sandboxPolicySchema>;
+export type SandboxPackageManager = z.infer<typeof sandboxPackageManagerSchema>;
 export type PackageAllowlist = z.infer<typeof packageAllowlistSchema>;
 export type CapabilityRegistryEntry = z.infer<typeof capabilityRegistryEntrySchema>;
 export type AgentFactoryProfile = z.infer<typeof agentFactoryProfileSchema>;

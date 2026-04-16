@@ -79,6 +79,8 @@ export function registerServices(options: {
       headRuntimeService,
       sandboxRuntimeService: createSandboxRuntimeService({
         logger: options.loggerFactory.createLogger({ service: 'sandbox_runtime' }),
+        repositories: adapters.adapters.repositories,
+        repositoryConfig,
         sandboxRuntime: adapters.adapters.sandboxRuntime,
       }),
       schedulerRuntimeService: createSchedulerRuntimeService({

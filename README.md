@@ -21,7 +21,7 @@ The fast inner loop remains `pnpm dev`. With the checked-in defaults, the proces
 - sandbox: `http://127.0.0.1:3002/healthz`
 - Hands: liveness file written to the OS temp directory unless `ECHIDNA_HANDS_LIVENESS_FILE` is set
 
-The containerized integration loop is `pnpm compose:up`. It serves the web container on `http://127.0.0.1:4173` and keeps API and sandbox on the same ports as the process loop.
+The containerized integration loop is `pnpm compose:up`. It serves the web container on `http://127.0.0.1:4173`, keeps API and sandbox on the same ports as the process loop, and writes the Hands liveness file to `.compose/hands/hands-liveness.json` for smoke verification from the host.
 
 Copy `.env.example` to `.env.local` when you need to switch from `local-minimal` to `shared-cloud` mode or override any local defaults.
 
