@@ -17,6 +17,10 @@ import {
 import { handleCreateTask } from './head-tool-handlers/create-task.js';
 import { handleDescribeCapabilities } from './head-tool-handlers/describe-capabilities.js';
 import { handleReadStatus } from './head-tool-handlers/read-status.js';
+import { handleRequestApproval } from './head-tool-handlers/request-approval.js';
+import { handleRequestCredential } from './head-tool-handlers/request-credential.js';
+import type { ApprovalLifecycleService } from './approval-lifecycle-service.js';
+import type { CredentialLifecycleService } from './credential-lifecycle-service.js';
 import type { ScheduleMutationService } from './schedule-mutation-service.js';
 import type { TaskQueueService } from './task-queue-service.js';
 
@@ -26,6 +30,7 @@ type HeadToolName =
   | 'create_task'
   | 'change_schedule'
   | 'request_approval'
+  | 'request_credential'
   | 'memory_read'
   | 'memory_write'
   | 'invoke_sandbox';
@@ -60,7 +65,9 @@ function emptyObjectSchema(): Record<string, unknown> {
 export function createHeadToolCatalog(input: {
   activeHeadTurnCount: number;
   agent: Agent;
+  approvalLifecycleService: ApprovalLifecycleService;
   channel: Channel;
+  credentialLifecycleService: CredentialLifecycleService;
   headTurn: HeadTurn;
   repositoryConfig: RepositoryConfig;
   scheduleMutationService: ScheduleMutationService;
@@ -74,7 +81,7 @@ export function createHeadToolCatalog(input: {
       execute: async (args) => {
         const parsedArgs = z
           .object({
-            focus: z.enum(['summary', 'tasks', 'approvals']).optional(),
+            focus: z.enum(['summary', 'tasks', 'approvals', 'credentials']).optional(),
           })
           .strict()
           .parse(args);
@@ -97,7 +104,7 @@ export function createHeadToolCatalog(input: {
         properties: {
           focus: {
             type: 'string',
-            enum: ['summary', 'tasks', 'approvals'],
+            enum: ['summary', 'tasks', 'approvals', 'credentials'],
           },
         },
         required: ['focus'],
@@ -168,16 +175,53 @@ export function createHeadToolCatalog(input: {
     },
     {
       description: 'Request explicit user approval before performing a guarded action.',
-      enabled: false,
+      enabled: true,
+      execute: async (args) =>
+        handleRequestApproval({
+          approvalLifecycleService: input.approvalLifecycleService,
+          args,
+          channelId: input.channel.id,
+          headTurn: input.headTurn,
+        }),
       inputSchema: {
         type: 'object',
         properties: {
+          taskId: { type: 'string' },
+          category: {
+            type: 'string',
+            enum: ['external_write', 'send', 'delete', 'purchase', 'credential_change', 'bulk_update', 'other'],
+          },
           summary: { type: 'string' },
+          actionFingerprint: { type: 'string' },
+          expiresAt: { type: 'string' },
+          blocking: { type: 'boolean' },
         },
-        required: ['summary'],
+        required: ['taskId', 'category', 'summary'],
         additionalProperties: false,
       },
       name: 'request_approval',
+    },
+    {
+      description: 'Request a secure credential capture flow for a configured external service.',
+      enabled: true,
+      execute: async (args) =>
+        handleRequestCredential({
+          args,
+          channelId: input.channel.id,
+          credentialLifecycleService: input.credentialLifecycleService,
+          headTurn: input.headTurn,
+        }),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          serviceAlias: { type: 'string' },
+          reason: { type: 'string' },
+          taskId: { type: 'string' },
+        },
+        required: ['serviceAlias'],
+        additionalProperties: false,
+      },
+      name: 'request_credential',
     },
     {
       description: 'Read long-term memory for the current user or task.',

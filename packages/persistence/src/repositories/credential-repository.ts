@@ -132,6 +132,7 @@ export class DefaultCredentialRepository implements CredentialRepository {
         eq('provider', provider),
         eq('alias', alias),
       ],
+      orderBy: [{ field: 'updatedAt', direction: 'desc' }],
       limit: 1,
     });
 

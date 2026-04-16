@@ -8,10 +8,13 @@ import {
   encodeTelegramCallbackData,
 } from '@echidna-claw/domain';
 import {
+  createApproval,
   createAgent,
   createChannel,
   createCorrelationMetadata,
   createCredentialRef,
+  createTask,
+  createWorkingContext,
 } from '@echidna-claw/persistence';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -208,9 +211,72 @@ async function seedActiveTelegramChannel(
   };
 }
 
+async function seedPendingApproval(
+  app: ReturnType<typeof buildApiServer>,
+  input: {
+    agentId: string;
+    approvalId?: string;
+    channelId: string;
+    taskId?: string;
+    workingContextId?: string;
+  },
+): Promise<void> {
+  const repositories = app.dependencies.adapters.repositories;
+  const approvalId = input.approvalId ?? 'apr_test-approval';
+  const taskId = input.taskId ?? 'tsk_test-approval';
+  const workingContextId = input.workingContextId ?? 'ctx_test-approval';
+
+  await repositories.workingContexts.create(
+    createWorkingContext({
+      agentId: input.agentId,
+      correlation: createCorrelationMetadata({
+        idempotencyKey: 'idem_seed-approval-context',
+        taskId,
+        traceId: 'trc_seed-approval-context',
+      }),
+      id: workingContextId,
+      pendingApprovalIds: [approvalId],
+    }),
+  );
+  await repositories.tasks.createTask(
+    createTask({
+      activeApprovalId: approvalId,
+      activeTaskEnvelopeId: null,
+      agentId: input.agentId,
+      correlation: createCorrelationMetadata({
+        approvalId,
+        idempotencyKey: 'idem_seed-approval-task',
+        taskId,
+        traceId: 'trc_seed-approval-task',
+      }),
+      currentRunJournalId: null,
+      id: taskId,
+      requestedOutcome: 'Approve the deployment action.',
+      state: 'waiting_for_user',
+    }),
+  );
+  await repositories.approvals.create(
+    createApproval({
+      agentId: input.agentId,
+      correlation: createCorrelationMetadata({
+        approvalId,
+        idempotencyKey: 'idem_seed-approval-record',
+        taskId,
+        traceId: 'trc_seed-approval-record',
+      }),
+      id: approvalId,
+      requestChannelId: input.channelId,
+      summary: 'Approve the deployment action.',
+      taskId,
+      taskEnvelopeId: null,
+    }),
+  );
+}
+
 function createEmptyEffectSummary() {
   return {
     approvalRequested: false,
+    credentialRequested: false,
     memoryOperationRequested: false,
     sandboxRequested: false,
     scheduleChangeRequested: false,
@@ -599,6 +665,7 @@ describe('Telegram channel adapter', () => {
       trustedUserHandle: 'trusted-user',
       trustedUserId: 'user-42',
     });
+    await seedPendingApproval(app, seeded);
 
     const response = await app.inject({
       headers: createWebhookHeaders(app),
@@ -675,6 +742,7 @@ describe('Telegram channel adapter', () => {
       trustedUserHandle: 'trusted-user',
       trustedUserId: 'user-42',
     });
+    await seedPendingApproval(app, seeded);
     app.dependencies.adapters.repositories.credentials.decryptCredential = async () => {
       throw new Error('Key Vault crypto unavailable');
     };

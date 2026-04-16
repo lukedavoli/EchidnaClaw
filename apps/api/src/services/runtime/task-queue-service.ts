@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
 
 import type {
+  Approval,
+  CredentialCapture,
   EnqueueTaskRequest,
   EnqueueTaskResult,
   ExternalReference,
@@ -35,6 +37,7 @@ import {
   withTaskProgressSummary,
 } from '@echidna-claw/domain';
 import type { Logger } from '@echidna-claw/observability';
+import type { StoredRecord } from '@echidna-claw/persistence';
 
 import type { HandsJobTriggerAdapter } from '../../adapters/jobs/index.js';
 import type { RepositoryBundle } from '../../adapters/repositories/index.js';
@@ -354,6 +357,7 @@ export function createTaskQueueService(options: {
 
         return {
           activeApprovalId: storedTask.value.activeApprovalId,
+          activeCredentialCaptureId: storedTask.value.activeCredentialCaptureId,
           currentRunJournalId: storedTask.value.currentRunJournalId,
           dueAt: storedTask.value.dueAt,
           launchState: storedTask.value.launchState,
@@ -435,6 +439,7 @@ export function createTaskQueueService(options: {
           candidate.value.queue.lane === request.lane &&
           candidate.value.requestedBy.kind === request.requestedBy.kind &&
           candidate.value.activeApprovalId == null &&
+          candidate.value.activeCredentialCaptureId == null &&
           (!shouldDefer || candidate.value.state === 'deferred'),
       );
 
@@ -473,6 +478,7 @@ export function createTaskQueueService(options: {
               currentRunJournalId: null,
               currentHandsRunId: null,
               activeApprovalId: null,
+              activeCredentialCaptureId: null,
               mergeKey,
               mergedIntoTaskId: null,
               attemptCount: 1,
@@ -668,6 +674,7 @@ export function createTaskQueueService(options: {
             currentRunJournalId: runJournal.id,
             currentHandsRunId: null,
             activeApprovalId: null,
+            activeCredentialCaptureId: null,
             mergeKey,
             mergedIntoTaskId: null,
             attemptCount: 1,
@@ -1272,11 +1279,52 @@ export function createTaskQueueService(options: {
           : (await options.repositories.tasks.listOpenTasks(input.agentId)).map((task) => task.value.id);
       const openTasks = await buildStatusItems(openTaskIds, input.agentId);
       const schedules = await options.repositories.schedules.listByAgent(input.agentId, ['active']);
+      const pendingApprovalItems = (
+        await Promise.all(
+          storedWorkingContext.value.pendingApprovalIds.map((approvalId) =>
+            options.repositories.approvals.findById(approvalId),
+          ),
+        )
+      )
+        .filter((approval): approval is StoredRecord<Approval> => approval != null)
+        .map((approval) => ({
+          approvalId: approval.value.id,
+          category: approval.value.category,
+          expiresAt: approval.value.expiresAt,
+          requestedAt: approval.value.requestedAt,
+          state: approval.value.state,
+          stepUpRequired: approval.value.stepUpRequired,
+          summary: approval.value.summary,
+          taskId: approval.value.taskId,
+        }));
+      const pendingCredentialCaptureItems = (
+        await Promise.all(
+          storedWorkingContext.value.pendingCredentialCaptureIds.map((credentialCaptureId) =>
+            options.repositories.credentialCaptures.findById(credentialCaptureId),
+          ),
+        )
+      )
+        .filter((capture): capture is StoredRecord<CredentialCapture> => capture != null)
+        .map((capture) => ({
+          alias: capture.value.alias,
+          credentialCaptureId: capture.value.id,
+          displayName: capture.value.displayName,
+          expiresAt: capture.value.expiresAt,
+          provider: capture.value.provider,
+          reason: capture.value.reason,
+          requestedAt: capture.value.requestedAt,
+          state: capture.value.state,
+          taskId: capture.value.taskId,
+          willResumeTask: capture.value.taskId != null,
+        }));
 
       return taskStatusSnapshotSchema.parse({
         activeTaskId: storedWorkingContext.value.activeTaskId,
         openTasks,
         pendingApprovalIds: storedWorkingContext.value.pendingApprovalIds,
+        pendingApprovalItems,
+        pendingCredentialCaptureIds: storedWorkingContext.value.pendingCredentialCaptureIds,
+        pendingCredentialCaptureItems,
         schedules: schedules.map((schedule) => ({
           description: schedule.value.description,
           nextDueAt: schedule.value.nextDueAt,

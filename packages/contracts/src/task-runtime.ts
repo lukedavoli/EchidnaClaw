@@ -4,6 +4,7 @@ import { correlationMetadataSchema } from './correlation.js';
 import {
   agentIdSchema,
   approvalIdSchema,
+  credentialCaptureIdSchema,
   headTurnIdSchema,
   isoDateTimeSchema,
   runJournalIdSchema,
@@ -13,7 +14,10 @@ import {
   workingContextIdSchema,
 } from './identifiers.js';
 import {
+  approvalCategorySchema,
+  approvalStateSchema,
   journalStatusSchema,
+  credentialCaptureStateSchema,
   externalReferenceSchema,
   queueDescriptorSchema,
   queueLaneSchema,
@@ -105,6 +109,7 @@ export const taskStatusScheduleItemSchema = z
 export const taskStatusItemSchema = z
   .object({
     activeApprovalId: approvalIdSchema.nullable(),
+    activeCredentialCaptureId: credentialCaptureIdSchema.nullable(),
     currentRunJournalId: runJournalIdSchema.nullable(),
     dueAt: isoDateTimeSchema.nullable(),
     launchState: taskLaunchStateSchema,
@@ -118,11 +123,42 @@ export const taskStatusItemSchema = z
   })
   .strict();
 
+export const taskStatusApprovalItemSchema = z
+  .object({
+    approvalId: approvalIdSchema,
+    category: approvalCategorySchema,
+    expiresAt: isoDateTimeSchema.nullable(),
+    requestedAt: isoDateTimeSchema,
+    state: approvalStateSchema,
+    stepUpRequired: z.boolean(),
+    summary: z.string().trim().min(1),
+    taskId: taskIdSchema,
+  })
+  .strict();
+
+export const taskStatusCredentialCaptureItemSchema = z
+  .object({
+    alias: z.string().trim().min(1),
+    credentialCaptureId: credentialCaptureIdSchema,
+    displayName: z.string().trim().min(1),
+    expiresAt: isoDateTimeSchema.nullable(),
+    provider: z.string().trim().min(1),
+    reason: z.string().trim().min(1),
+    requestedAt: isoDateTimeSchema,
+    state: credentialCaptureStateSchema,
+    taskId: taskIdSchema.nullable(),
+    willResumeTask: z.boolean(),
+  })
+  .strict();
+
 export const taskStatusSnapshotSchema = z
   .object({
     activeTaskId: taskIdSchema.nullable(),
     openTasks: z.array(taskStatusItemSchema),
     pendingApprovalIds: z.array(approvalIdSchema),
+    pendingApprovalItems: z.array(taskStatusApprovalItemSchema).default([]),
+    pendingCredentialCaptureIds: z.array(credentialCaptureIdSchema).default([]),
+    pendingCredentialCaptureItems: z.array(taskStatusCredentialCaptureItemSchema).default([]),
     schedules: z.array(taskStatusScheduleItemSchema).default([]),
     workingContextId: workingContextIdSchema,
     workingContextSummary: z.string().trim().default(''),
@@ -135,5 +171,9 @@ export type RequestQueuedTaskStartRequest = z.infer<typeof requestQueuedTaskStar
 export type RequestQueuedTaskStartResult = z.infer<typeof requestQueuedTaskStartResultSchema>;
 export type EnqueueTaskResult = z.infer<typeof enqueueTaskResultSchema>;
 export type TaskStatusItem = z.infer<typeof taskStatusItemSchema>;
+export type TaskStatusApprovalItem = z.infer<typeof taskStatusApprovalItemSchema>;
+export type TaskStatusCredentialCaptureItem = z.infer<
+  typeof taskStatusCredentialCaptureItemSchema
+>;
 export type TaskStatusScheduleItem = z.infer<typeof taskStatusScheduleItemSchema>;
 export type TaskStatusSnapshot = z.infer<typeof taskStatusSnapshotSchema>;

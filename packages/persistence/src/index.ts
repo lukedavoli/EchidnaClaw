@@ -13,6 +13,7 @@ export * from './repositories/agent-registry-repository.js';
 export * from './repositories/approval-repository.js';
 export * from './repositories/artifact-repository.js';
 export * from './repositories/channel-repository.js';
+export * from './repositories/credential-capture-repository.js';
 export * from './repositories/credential-repository.js';
 export * from './repositories/errors.js';
 export * from './repositories/execution-repository.js';

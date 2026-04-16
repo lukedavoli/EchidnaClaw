@@ -23,6 +23,10 @@ import { DefaultApprovalRepository, type ApprovalRepository } from './approval-r
 import { DefaultArtifactRepository, type ArtifactRepository } from './artifact-repository.js';
 import { DefaultChannelRepository, type ChannelRepository } from './channel-repository.js';
 import { CosmosRecordStore } from './cosmos-record-store.js';
+import {
+  DefaultCredentialCaptureRepository,
+  type CredentialCaptureRepository,
+} from './credential-capture-repository.js';
 import { DefaultCredentialRepository, type CredentialRepository } from './credential-repository.js';
 import { DefaultExecutionRepository, type ExecutionRepository } from './execution-repository.js';
 import { DefaultIdempotencyRepository, type IdempotencyRepository } from './idempotency-repository.js';
@@ -41,6 +45,7 @@ export interface RepositorySuite {
   approvals: ApprovalRepository;
   artifacts: ArtifactRepository;
   channels: ChannelRepository;
+  credentialCaptures: CredentialCaptureRepository;
   credentials: CredentialRepository;
   execution: ExecutionRepository;
   idempotency: IdempotencyRepository;
@@ -86,6 +91,7 @@ export function createRepositorySuite(dependencies: RepositorySuiteDependencies)
       clock,
     ),
     channels,
+    credentialCaptures: new DefaultCredentialCaptureRepository(dependencies.recordStore),
     credentials: new DefaultCredentialRepository(
       dependencies.recordStore,
       dependencies.credentialEnvelopeCipher,

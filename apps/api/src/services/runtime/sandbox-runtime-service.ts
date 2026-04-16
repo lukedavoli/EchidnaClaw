@@ -17,8 +17,10 @@ import type { Logger } from '@echidna-claw/observability';
 import type { SandboxRuntimeAdapter } from '../../adapters/sandbox/index.js';
 import type { RepositoryBundle } from '../../adapters/repositories/index.js';
 import { ConflictError, NotFoundError } from '../../http/errors.js';
+import type { CredentialLifecycleService } from './credential-lifecycle-service.js';
 
 export function createSandboxRuntimeService(options: {
+  credentialLifecycleService: CredentialLifecycleService;
   logger: Logger;
   repositories: RepositoryBundle;
   repositoryConfig: RepositoryConfig;
@@ -71,8 +73,17 @@ export function createSandboxRuntimeService(options: {
         taskId: input.taskId,
       });
 
+      const credentialBindings =
+        input.credentialBindings.length > 0
+          ? input.credentialBindings
+          : await options.credentialLifecycleService.resolveSandboxBindings({
+              agentId: input.agentId,
+              credentialAliases: input.credentialAliases,
+            });
+
       const provisionedSession = await options.sandboxRuntime.createSession({
         ...input,
+        credentialBindings,
         packageAllowlistName,
         sessionId,
       });

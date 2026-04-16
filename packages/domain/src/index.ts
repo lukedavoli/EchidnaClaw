@@ -1,5 +1,7 @@
 export * from './agent-registry.js';
+export * from './approvals.js';
 export * from './concurrency.js';
+export * from './credentials.js';
 export * from './hands.js';
 export * from './idempotency.js';
 export * from './sandbox.js';

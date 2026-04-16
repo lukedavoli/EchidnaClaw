@@ -5,7 +5,7 @@ import { DuplicateRecordError, OptimisticConcurrencyError, type StoredRecord } f
 
 import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
 import type { RepositoryBundle } from '../../adapters/repositories/index.js';
-import { ConflictError } from '../../http/errors.js';
+import { ConflictError, NotFoundError } from '../../http/errors.js';
 import type {
   ApprovalCallbackService,
   OutboundMessagingService,
@@ -16,6 +16,7 @@ import type {
   HeadService,
   TrustedChannelIngressDispatchRequest,
 } from '@echidna-claw/contracts';
+import type { ApprovalLifecycleService } from '../runtime/approval-lifecycle-service.js';
 
 const DISPATCHER_RETRY_LIMIT = 3;
 
@@ -61,6 +62,7 @@ function createWorkingContextRecord(input: {
     conversationCursor: undefined,
     openTaskIds: [],
     pendingApprovalIds: [],
+    pendingCredentialCaptureIds: [],
   };
 }
 
@@ -273,20 +275,40 @@ export function createTrustedChannelIngressDispatcher(options: {
 }
 
 export function createApprovalActionDispatcher(options: {
+  approvalLifecycleService: ApprovalLifecycleService;
   logger: Logger;
 }): ApprovalCallbackService {
   return {
     async handleActionResponse(input: ChannelActionResponse): Promise<void> {
       switch (input.kind) {
-        case 'approval_decision':
-          options.logger.info('approval_action.dispatch', {
-            agentId: input.agentId,
-            approvalId: input.approvalId,
-            channelId: input.channelId,
-            decision: input.decision,
-            inboundMessageId: input.inboundMessageId,
-          });
+        case 'approval_decision': {
+          try {
+            const approval = await options.approvalLifecycleService.recordDecision(input);
+            options.logger.info('approval_action.dispatch', {
+              agentId: input.agentId,
+              approvalId: input.approvalId,
+              channelId: input.channelId,
+              decision: input.decision,
+              inboundMessageId: input.inboundMessageId,
+              state: approval.state,
+            });
+          } catch (error) {
+            if (error instanceof NotFoundError) {
+              options.logger.warn('approval_action.missing', {
+                agentId: input.agentId,
+                approvalId: input.approvalId,
+                channelId: input.channelId,
+                decision: input.decision,
+                inboundMessageId: input.inboundMessageId,
+                message: error.message,
+              });
+              return;
+            }
+
+            throw error;
+          }
           return;
+        }
         default:
           options.logger.warn('approval_action.unsupported', {
             channelId: input.channelId,

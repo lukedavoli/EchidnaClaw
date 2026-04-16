@@ -110,6 +110,7 @@ describe('createSchedulerRuntimeService', () => {
       return {
         effectSummary: {
           approvalRequested: false,
+          credentialRequested: false,
           memoryOperationRequested: false,
           sandboxRequested: false,
           scheduleChangeRequested: false,

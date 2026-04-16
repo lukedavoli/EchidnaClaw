@@ -6,6 +6,7 @@ import {
   approvalIdSchema,
   artifactIdSchema,
   channelIdSchema,
+  credentialCaptureIdSchema,
   credentialIdSchema,
   credentialSecretIdSchema,
   handsRunIdSchema,
@@ -57,6 +58,7 @@ export const messageBodySchema = z
   .strict();
 
 export const inboundMessageKindSchema = z.enum(['text', 'callback_query', 'unsupported']);
+export const sensitiveInputKindSchema = z.enum(['credential']);
 
 export const telegramMessageSenderSchema = z
   .object({
@@ -149,8 +151,29 @@ const tokenUsageSchema = z
 
 const usageSourceSchema = z.enum(['head', 'hands', 'sandbox', 'scheduler', 'web_control_plane']);
 export const journalStatusSchema = z.enum(['open', 'closed', 'failed']);
-const credentialStatusSchema = z.enum(['active', 'revoked']);
+export const credentialStatusSchema = z.enum(['active', 'revoked']);
 const idempotencyStatusSchema = z.enum(['reserved', 'completed', 'expired']);
+export const approvalCategorySchema = z.enum([
+  'external_write',
+  'send',
+  'delete',
+  'purchase',
+  'credential_change',
+  'bulk_update',
+  'other',
+]);
+export const approvalDecisionSourceSchema = z.enum([
+  'telegram_callback',
+  'expired',
+  'system_cancelled',
+]);
+export const credentialCaptureStateSchema = z.enum([
+  'requested',
+  'received',
+  'completed',
+  'cancelled',
+  'expired',
+]);
 export const runJournalEntryKindSchema = z.enum([
   'status',
   'progress',
@@ -277,6 +300,8 @@ export const inboundMessageSchema = createRecordSchema('inbound_message', inboun
   sender: telegramMessageSenderSchema.optional(),
   callbackData: nonEmptyStringSchema.optional(),
   unsupportedType: nonEmptyStringSchema.optional(),
+  redacted: z.boolean().default(false),
+  sensitiveInputKind: sensitiveInputKindSchema.nullable().default(null),
   body: messageBodySchema,
 });
 
@@ -317,6 +342,7 @@ export const workingContextSchema = createRecordSchema('working_context', workin
   conversationCursor: nonEmptyStringSchema.optional(),
   openTaskIds: z.array(taskIdSchema).default([]),
   pendingApprovalIds: z.array(approvalIdSchema).default([]),
+  pendingCredentialCaptureIds: z.array(credentialCaptureIdSchema).default([]),
 });
 
 export const taskSchema = createRecordSchema('task', taskIdSchema, {
@@ -333,6 +359,7 @@ export const taskSchema = createRecordSchema('task', taskIdSchema, {
   currentRunJournalId: runJournalIdSchema.nullable().default(null),
   currentHandsRunId: handsRunIdSchema.nullable(),
   activeApprovalId: approvalIdSchema.nullable(),
+  activeCredentialCaptureId: credentialCaptureIdSchema.nullable().default(null),
   mergeKey: nonEmptyStringSchema.nullable().default(null),
   mergedIntoTaskId: taskIdSchema.nullable().default(null),
   attemptCount: z.number().int().positive().default(1),
@@ -384,10 +411,45 @@ export const approvalSchema = createRecordSchema('approval', approvalIdSchema, {
   requestedAt: isoDateTimeSchema,
   decidedAt: isoDateTimeSchema.nullable(),
   blocking: z.boolean(),
+  category: approvalCategorySchema.default('other'),
   summary: nonEmptyStringSchema,
+  actionFingerprint: nonEmptyStringSchema.default('unspecified'),
+  requestChannelId: channelIdSchema.nullable().default(null),
+  requestMessageId: outboundMessageIdSchema.nullable().default(null),
+  taskEnvelopeId: taskEnvelopeIdSchema.nullable().default(null),
+  runJournalId: runJournalIdSchema.nullable().default(null),
+  decisionInboundMessageId: inboundMessageIdSchema.nullable().default(null),
+  decisionChannelId: channelIdSchema.nullable().default(null),
+  decisionSource: approvalDecisionSourceSchema.nullable().default(null),
+  stepUpRequired: z.boolean().default(false),
   decisionReason: z.string().trim().default(''),
   expiresAt: isoDateTimeSchema.nullable(),
 });
+
+export const credentialCaptureSchema = createRecordSchema(
+  'credential_capture',
+  credentialCaptureIdSchema,
+  {
+    agentId: agentIdSchema,
+    taskId: taskIdSchema.nullable().default(null),
+    runJournalId: runJournalIdSchema.nullable().default(null),
+    state: credentialCaptureStateSchema,
+    provider: nonEmptyStringSchema,
+    alias: nonEmptyStringSchema,
+    displayName: nonEmptyStringSchema,
+    reason: nonEmptyStringSchema,
+    storageNotice: nonEmptyStringSchema,
+    requestChannelId: channelIdSchema,
+    requestMessageId: outboundMessageIdSchema.nullable().default(null),
+    receivedInboundMessageId: inboundMessageIdSchema.nullable().default(null),
+    credentialId: credentialIdSchema.nullable().default(null),
+    replacingCredentialId: credentialIdSchema.nullable().default(null),
+    requestedAt: isoDateTimeSchema,
+    receivedAt: isoDateTimeSchema.nullable().default(null),
+    completedAt: isoDateTimeSchema.nullable().default(null),
+    expiresAt: isoDateTimeSchema.nullable().default(null),
+  },
+);
 
 export const scheduleSchema = createRecordSchema('schedule', scheduleIdSchema, {
   agentId: agentIdSchema,
@@ -413,12 +475,15 @@ export const credentialRefSchema = createRecordSchema('credential_ref', credenti
   agentId: agentIdSchema,
   provider: nonEmptyStringSchema,
   alias: nonEmptyStringSchema,
+  displayName: nonEmptyStringSchema.optional(),
   scope: z.enum(['agent', 'platform']),
   status: credentialStatusSchema,
   accessPolicyRef: nonEmptyStringSchema,
   encryptionKeyRef: nonEmptyStringSchema,
   lastRotatedAt: isoDateTimeSchema.nullable(),
+  lastUsedAt: isoDateTimeSchema.nullable().default(null),
   revokedAt: isoDateTimeSchema.nullable(),
+  replacedByCredentialId: credentialIdSchema.nullable().default(null),
   expiresAt: isoDateTimeSchema.nullable(),
 });
 
@@ -547,6 +612,18 @@ export const sandboxResourceProfileSchema = z
   })
   .strict();
 
+export const sandboxCredentialExposureSchema = z.enum(['env']);
+
+export const sandboxCredentialBindingSchema = z
+  .object({
+    credentialId: credentialIdSchema,
+    provider: nonEmptyStringSchema,
+    alias: nonEmptyStringSchema,
+    exposure: sandboxCredentialExposureSchema,
+    targetName: nonEmptyStringSchema,
+  })
+  .strict();
+
 export const sandboxSessionSchema = createRecordSchema('sandbox_session', sandboxSessionIdSchema, {
   agentId: agentIdSchema,
   handsRunId: handsRunIdSchema,
@@ -557,6 +634,7 @@ export const sandboxSessionSchema = createRecordSchema('sandbox_session', sandbo
   workingDirectory: nonEmptyStringSchema,
   resourceProfile: sandboxResourceProfileSchema,
   packageAllowlistName: nonEmptyStringSchema.nullable().default(null),
+  credentialBindings: z.array(sandboxCredentialBindingSchema).default([]),
   credentialAliases: z.array(nonEmptyStringSchema).default([]),
   commandCount: z.number().int().nonnegative().default(0),
   lastCommandStartedAt: isoDateTimeSchema.nullable().default(null),
@@ -572,6 +650,7 @@ export type ArtifactLink = z.infer<typeof artifactLinkSchema>;
 export type ExternalReference = z.infer<typeof externalReferenceSchema>;
 export type MessageBody = z.infer<typeof messageBodySchema>;
 export type InboundMessageKind = z.infer<typeof inboundMessageKindSchema>;
+export type SensitiveInputKind = z.infer<typeof sensitiveInputKindSchema>;
 export type TelegramMessageSender = z.infer<typeof telegramMessageSenderSchema>;
 export type OutboundMessageAction = z.infer<typeof outboundMessageActionSchema>;
 export type RequestedBy = z.infer<typeof requestedBySchema>;
@@ -589,6 +668,9 @@ export type UsageSource = z.infer<typeof usageSourceSchema>;
 export type JournalStatus = z.infer<typeof journalStatusSchema>;
 export type CredentialStatus = z.infer<typeof credentialStatusSchema>;
 export type IdempotencyStatus = z.infer<typeof idempotencyStatusSchema>;
+export type ApprovalCategory = z.infer<typeof approvalCategorySchema>;
+export type ApprovalDecisionSource = z.infer<typeof approvalDecisionSourceSchema>;
+export type CredentialCaptureState = z.infer<typeof credentialCaptureStateSchema>;
 export type RunJournalEntryKind = z.infer<typeof runJournalEntryKindSchema>;
 export type TaskState = z.infer<typeof taskStateSchema>;
 export type ApprovalState = z.infer<typeof approvalStateSchema>;
@@ -610,6 +692,7 @@ export type WorkingContext = z.infer<typeof workingContextSchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskEnvelope = z.infer<typeof taskEnvelopeSchema>;
 export type Approval = z.infer<typeof approvalSchema>;
+export type CredentialCapture = z.infer<typeof credentialCaptureSchema>;
 export type Schedule = z.infer<typeof scheduleSchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
 export type CredentialRef = z.infer<typeof credentialRefSchema>;
@@ -621,6 +704,8 @@ export type RunJournalEntry = z.infer<typeof runJournalEntrySchema>;
 export type HeadTurn = z.infer<typeof headTurnSchema>;
 export type HandsRun = z.infer<typeof handsRunSchema>;
 export type SandboxResourceProfile = z.infer<typeof sandboxResourceProfileSchema>;
+export type SandboxCredentialExposure = z.infer<typeof sandboxCredentialExposureSchema>;
+export type SandboxCredentialBinding = z.infer<typeof sandboxCredentialBindingSchema>;
 export type SandboxSession = z.infer<typeof sandboxSessionSchema>;
 
 export const platformRecordSchema = z.discriminatedUnion('recordType', [
@@ -632,6 +717,7 @@ export const platformRecordSchema = z.discriminatedUnion('recordType', [
   taskSchema,
   taskEnvelopeSchema,
   approvalSchema,
+  credentialCaptureSchema,
   scheduleSchema,
   artifactSchema,
   credentialRefSchema,

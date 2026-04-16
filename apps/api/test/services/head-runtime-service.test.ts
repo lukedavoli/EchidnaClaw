@@ -111,6 +111,7 @@ async function executeTrustedTurn(input: {
           conversationCursor: 'conv_test',
           effectSummary: {
             approvalRequested: false,
+            credentialRequested: false,
             memoryOperationRequested: false,
             sandboxRequested: false,
             scheduleChangeRequested: false,

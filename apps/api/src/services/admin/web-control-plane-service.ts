@@ -6,9 +6,12 @@ import type {
 import type { Logger } from '@echidna-claw/observability';
 
 import type { RepositoryBundle } from '../../adapters/repositories/index.js';
+import { NotFoundError } from '../../http/errors.js';
 import { createAgentRegistryService } from './agent-registry-service.js';
+import type { CredentialLifecycleService } from '../runtime/credential-lifecycle-service.js';
 
 export function createWebControlPlaneService(options: {
+  credentialLifecycleService: CredentialLifecycleService;
   logger: Logger;
   repositories: RepositoryBundle;
   repositoryConfig: RepositoryConfig;
@@ -34,11 +37,27 @@ export function createWebControlPlaneService(options: {
     },
     async getApprovalState(approvalId: ApprovalId) {
       options.logger.info('web_control_plane.get_approval_state', { approvalId });
-      return options.repositories.approvals.getState(approvalId);
+      const approval = await options.repositories.approvals.findById(approvalId);
+      if (!approval) {
+        throw new NotFoundError(`Approval '${approvalId}' was not found.`);
+      }
+
+      return approval.value.state;
+    },
+    async listCredentials(agentId) {
+      options.logger.info('web_control_plane.list_credentials', { agentId });
+      return options.credentialLifecycleService.listCredentialSummaries(agentId);
     },
     async listAgents() {
       options.logger.info('web_control_plane.list_agents');
       return agentRegistry.listAgents();
+    },
+    async revokeCredential(input) {
+      options.logger.info('web_control_plane.revoke_credential', {
+        agentId: input.agentId,
+        credentialId: input.credentialId,
+      });
+      return options.credentialLifecycleService.revokeCredential(input);
     },
     async retryAgentProvisioning(input) {
       options.logger.info('web_control_plane.retry_agent_provisioning', { agentId: input.agentId });

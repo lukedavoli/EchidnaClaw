@@ -72,6 +72,7 @@ export interface ExecutionRepository {
     workingContextEtag?: string;
   }): Promise<HeadTurnClaimResult | { headTurn: StoredRecord<HeadTurn>; workingContext: null }>;
   createHandsRun(handsRun: HandsRun): Promise<StoredRecord<HandsRun>>;
+  findHandsRun(handsRunId: HandsRunId): Promise<StoredRecord<HandsRun> | null>;
   findHandsRunByDispatchKey(
     agentId: AgentId,
     dispatchIdempotencyKey: string,
@@ -261,6 +262,17 @@ export class DefaultExecutionRepository implements ExecutionRepository {
 
   async createHandsRun(handsRun: HandsRun): Promise<StoredRecord<HandsRun>> {
     return this.store.create(handsRunSchema.parse(handsRun));
+  }
+
+  async findHandsRun(handsRunId: HandsRunId): Promise<StoredRecord<HandsRun> | null> {
+    const results = await this.store.query({
+      containerName: operationalContainerName,
+      schema: handsRunSchema,
+      where: [eq('recordType', 'hands_run'), eq('id', handsRunId)],
+      limit: 1,
+    });
+
+    return results[0] ?? null;
   }
 
   async findHandsRunByDispatchKey(

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { isoDateTimeSchema, modelIdSchema, nonEmptyStringSchema, nonNegativeNumberSchema } from './identifiers.js';
+import { approvalCategorySchema, sandboxCredentialExposureSchema } from './records.js';
 
 export const modelPricingSchema = z
   .object({
@@ -61,6 +62,40 @@ export const agentFactoryProfileSchema = z
   })
   .strict();
 
+export const approvalPolicyCategorySchema = z
+  .object({
+    id: approvalCategorySchema,
+    displayName: nonEmptyStringSchema,
+    stepUpRequired: z.boolean().default(false),
+    defaultExpiryMinutes: z.number().int().positive(),
+  })
+  .strict();
+
+export const approvalPolicySchema = z
+  .object({
+    categories: z.array(approvalPolicyCategorySchema).min(1),
+  })
+  .strict();
+
+export const credentialServiceBindingRuleSchema = z
+  .object({
+    exposure: sandboxCredentialExposureSchema,
+    targetName: nonEmptyStringSchema,
+  })
+  .strict();
+
+export const credentialServiceConfigSchema = z
+  .object({
+    provider: nonEmptyStringSchema,
+    alias: nonEmptyStringSchema,
+    displayName: nonEmptyStringSchema,
+    reasonTemplate: nonEmptyStringSchema,
+    storageNotice: nonEmptyStringSchema,
+    accessPolicyRef: nonEmptyStringSchema,
+    sandboxBindings: z.array(credentialServiceBindingRuleSchema).default([]),
+  })
+  .strict();
+
 export const repositoryConfigSchema = z
   .object({
     version: z.literal('1'),
@@ -73,6 +108,16 @@ export const repositoryConfigSchema = z
     agents: z
       .object({
         factoryProfile: agentFactoryProfileSchema,
+      })
+      .strict(),
+    approvals: z
+      .object({
+        policy: approvalPolicySchema,
+      })
+      .strict(),
+    credentials: z
+      .object({
+        services: z.array(credentialServiceConfigSchema).min(1),
       })
       .strict(),
     sandbox: z
@@ -151,6 +196,30 @@ export const repositoryConfigSchema = z
       }
       capabilityIds.add(capability.id);
     }
+
+    const approvalCategories = new Set<string>();
+    for (const category of value.approvals.policy.categories) {
+      if (approvalCategories.has(category.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['approvals', 'policy', 'categories'],
+          message: `Duplicate approval category '${category.id}'`,
+        });
+      }
+      approvalCategories.add(category.id);
+    }
+
+    const credentialAliases = new Set<string>();
+    for (const service of value.credentials.services) {
+      if (credentialAliases.has(service.alias)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['credentials', 'services'],
+          message: `Duplicate credential service alias '${service.alias}'`,
+        });
+      }
+      credentialAliases.add(service.alias);
+    }
   });
 
 export type ModelPricing = z.infer<typeof modelPricingSchema>;
@@ -159,4 +228,8 @@ export type SandboxPackageManager = z.infer<typeof sandboxPackageManagerSchema>;
 export type PackageAllowlist = z.infer<typeof packageAllowlistSchema>;
 export type CapabilityRegistryEntry = z.infer<typeof capabilityRegistryEntrySchema>;
 export type AgentFactoryProfile = z.infer<typeof agentFactoryProfileSchema>;
+export type ApprovalPolicyCategory = z.infer<typeof approvalPolicyCategorySchema>;
+export type ApprovalPolicy = z.infer<typeof approvalPolicySchema>;
+export type CredentialServiceBindingRule = z.infer<typeof credentialServiceBindingRuleSchema>;
+export type CredentialServiceConfig = z.infer<typeof credentialServiceConfigSchema>;
 export type RepositoryConfig = z.infer<typeof repositoryConfigSchema>;

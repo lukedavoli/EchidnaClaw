@@ -1,10 +1,12 @@
-import type { AnalyticsOverview, ApprovalId, ApprovalState } from '@echidna-claw/contracts';
+import type { AnalyticsOverview } from '@echidna-claw/contracts';
 import {
   createAzureRepositorySuite,
   createInMemoryRepositorySuite,
   type AgentRegistryRepository,
   type AgentRepository,
+  type ApprovalRepository,
   type ChannelRepository,
+  type CredentialCaptureRepository,
   type CredentialRepository,
   type ExecutionRepository,
   type IdempotencyRepository,
@@ -24,10 +26,9 @@ export interface RepositoryBundle {
   analytics: {
     getOverview(): Promise<AnalyticsOverview>;
   };
-  approvals: {
-    getState(approvalId: ApprovalId): Promise<ApprovalState>;
-  };
+  approvals: ApprovalRepository;
   channels: ChannelRepository;
+  credentialCaptures: CredentialCaptureRepository;
   credentials: CredentialRepository;
   execution: ExecutionRepository;
   idempotency: IdempotencyRepository;
@@ -82,13 +83,9 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
           throw new NotImplementedYetError('Analytics aggregation is reserved for Step 18.');
         },
       },
-      approvals: {
-        async getState(_approvalId: ApprovalId): Promise<ApprovalState> {
-          void _approvalId;
-          throw new NotImplementedYetError('Approval persistence is reserved for Step 16.');
-        },
-      },
+      approvals: suite.approvals,
       channels: suite.channels,
+      credentialCaptures: suite.credentialCaptures,
       credentials: suite.credentials,
       execution: suite.execution,
       idempotency: suite.idempotency,

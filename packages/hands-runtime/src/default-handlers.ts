@@ -32,6 +32,7 @@ async function maybeRunSandboxCommand(
   }
 
   const session = await context.sandbox.createSession({
+    credentialBindings: [],
     credentialAliases: [],
     packageAllowlistName: script.sandboxCommand.packageAllowlistName,
     policyName: script.sandboxCommand.policyName ?? 'standard',

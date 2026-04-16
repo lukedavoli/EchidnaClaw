@@ -2,7 +2,7 @@ import type { HeadTurn, TaskStatusSnapshot } from '@echidna-claw/contracts';
 
 export function handleReadStatus(input: {
   activeHeadTurnCount: number;
-  focus?: 'approvals' | 'summary' | 'tasks';
+  focus?: 'approvals' | 'credentials' | 'summary' | 'tasks';
   headTurn: HeadTurn;
   snapshot: TaskStatusSnapshot;
 }): string {
@@ -14,15 +14,29 @@ export function handleReadStatus(input: {
     `Open tasks: ${input.snapshot.openTasks.length}`,
     `Active schedules: ${input.snapshot.schedules.length}`,
     `Pending approvals: ${input.snapshot.pendingApprovalIds.length}`,
+    `Pending credential captures: ${input.snapshot.pendingCredentialCaptureIds.length}`,
   ];
 
   if (input.focus === 'approvals') {
     lines.push(
-      `Approval ids: ${
-        input.snapshot.pendingApprovalIds.length > 0
-          ? input.snapshot.pendingApprovalIds.join(', ')
-          : 'None.'
-      }`,
+      ...(input.snapshot.pendingApprovalItems.length > 0
+        ? input.snapshot.pendingApprovalItems.map(
+            (approval) =>
+              `- approval ${approval.approvalId}: ${approval.state} category=${approval.category} task=${approval.taskId} summary="${approval.summary}" expiresAt=${approval.expiresAt ?? 'none'}`,
+          )
+        : ['- No pending approvals.']),
+    );
+    return lines.join('\n');
+  }
+
+  if (input.focus === 'credentials') {
+    lines.push(
+      ...(input.snapshot.pendingCredentialCaptureItems.length > 0
+        ? input.snapshot.pendingCredentialCaptureItems.map(
+            (capture) =>
+              `- credential ${capture.credentialCaptureId}: ${capture.state} alias=${capture.alias} displayName="${capture.displayName}" task=${capture.taskId ?? 'none'} resume=${capture.willResumeTask ? 'automatic' : 'none'}`,
+          )
+        : ['- No pending credential captures.']),
     );
     return lines.join('\n');
   }

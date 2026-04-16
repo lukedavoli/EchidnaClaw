@@ -249,6 +249,7 @@ export class LocalSandboxRuntime {
       workingDirectory,
       resourceProfile,
       packageAllowlistName: packageAllowlist.name,
+      credentialBindings: request.credentialBindings,
       credentialAliases: request.credentialAliases,
       commandCount: 0,
       lastCommandStartedAt: null,
@@ -363,7 +364,7 @@ export class LocalSandboxRuntime {
     const shell = resolveShell(request.shell);
     const timeoutMs = clampSandboxTimeoutMs(policy, request.timeoutMs);
     const environmentBindings = await this.credentialResolver.resolveBindings({
-      credentialAliases: runtimeSession.session.credentialAliases,
+      credentialBindings: runtimeSession.session.credentialBindings,
       sessionId: request.sessionId,
     });
     const homeDirectory = resolve(runtimeSession.session.workspaceRoot, HOME_DIRECTORY_NAME);

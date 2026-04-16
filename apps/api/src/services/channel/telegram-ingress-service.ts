@@ -35,10 +35,12 @@ import type {
   TelegramIngressService,
   TrustedChannelIngressDispatcher,
 } from './contracts.js';
+import type { CredentialLifecycleService } from '../runtime/credential-lifecycle-service.js';
 import {
   normalizeTelegramWebhookUpdate,
   type NormalizedTelegramUpdate,
 } from './telegram-normalization.js';
+ 
 
 const SCHEMA_VERSION = 1 as const;
 const INBOUND_IDEMPOTENCY_SCOPE = 'telegram:webhook';
@@ -186,12 +188,15 @@ function buildUpdatedChannel(input: {
 
 function buildInboundMessage(input: {
   agentId: InboundMessage['agentId'];
+  bodyText?: string;
   channelId: InboundMessage['channelId'];
   correlation: CorrelationMetadata;
   inboundMessageId: InboundMessage['id'];
   normalized: NormalizedTelegramUpdate;
   receivedAt: string;
   sequence: number;
+  redacted?: boolean;
+  sensitiveInputKind?: InboundMessage['sensitiveInputKind'];
   trusted: boolean;
   kind: InboundMessage['kind'];
   unsupportedType?: string;
@@ -219,8 +224,10 @@ function buildInboundMessage(input: {
     ...(input.normalized.sender ? { sender: input.normalized.sender } : {}),
     ...(input.normalized.callbackData ? { callbackData: input.normalized.callbackData } : {}),
     ...(input.unsupportedType ? { unsupportedType: input.unsupportedType } : {}),
+    redacted: input.redacted ?? false,
+    sensitiveInputKind: input.sensitiveInputKind ?? null,
     body: {
-      text: input.normalized.text,
+      text: input.bodyText ?? input.normalized.text,
       artifacts: [],
     },
   };
@@ -273,6 +280,7 @@ async function acknowledgeCallbackQuery(options: {
 
 export function createTelegramIngressService(options: {
   approvalCallbackService: ApprovalCallbackService;
+  credentialLifecycleService: CredentialLifecycleService;
   logger: Logger;
   repositories: RepositoryBundle;
   telegramBotApi: TelegramBotApiAdapter;
@@ -339,9 +347,24 @@ export function createTelegramIngressService(options: {
           channel: storedChannel.value,
           normalized,
         });
+        const pendingCredentialCapture =
+          evaluation.trusted && normalized.kind === 'text'
+            ? await options.credentialLifecycleService.getPendingRequestedCapture(agent.value.id)
+            : null;
+        const secureCredentialCapture =
+          pendingCredentialCapture?.requestChannelId === storedChannel.value.id
+            ? pendingCredentialCapture
+            : null;
         const sequence = storedChannel.value.lastInboundSequence + 1;
         const message = buildInboundMessage({
           agentId: agent.value.id,
+          ...(secureCredentialCapture
+            ? {
+                bodyText: '[credential input redacted]',
+                redacted: true,
+                sensitiveInputKind: 'credential' as const,
+              }
+            : {}),
           channelId: storedChannel.value.id,
           correlation,
           inboundMessageId,
@@ -477,6 +500,17 @@ export function createTelegramIngressService(options: {
           repositories: options.repositories,
           telegramBotApi: options.telegramBotApi,
           text: 'Decision recorded.',
+        });
+        return;
+      }
+
+      if (appendResult.message.value.redacted && appendResult.message.value.sensitiveInputKind === 'credential') {
+        await options.credentialLifecycleService.completePendingCaptureFromTrustedInput({
+          agentId: agent.value.id,
+          channelId: appendResult.channel.value.id,
+          correlation,
+          inboundMessageId,
+          plaintext: normalized.text,
         });
         return;
       }

@@ -63,8 +63,12 @@ export function createTaskMergeKey(input: {
   ]);
 }
 
-export function createApprovalIdempotencyKey(taskId: string, approvalSummary: string): string {
-  return createKey('idem', [taskId, approvalSummary]);
+export function createApprovalIdempotencyKey(
+  taskId: string,
+  approvalSummary: string,
+  actionFingerprint?: string,
+): string {
+  return createKey('idem', [taskId, approvalSummary, actionFingerprint ?? 'default']);
 }
 
 export function createSandboxSessionIdempotencyKey(handsRunId: HandsRunId, policyName: string): string {

@@ -41,6 +41,12 @@ export class HandsCancellationError extends Error {
   }
 }
 
+export class HandsReleasedForUserError extends Error {
+  constructor(public readonly result: HandsRunExecutionResult) {
+    super(result.summary);
+  }
+}
+
 function createRuntimeIdentifier(prefix: 'rje' | 'sbx'): string {
   return `${prefix}_${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
 }
@@ -143,6 +149,30 @@ export class ActiveHandsRunSession {
     if (!reloadedTask) {
       throw new Error(`Task '${this.state.task.value.id}' was not found during checkpoint '${label}'.`);
     }
+    const reloadedHandsRun = await this.options.repositories.execution.getHandsRun(
+      this.state.handsRun.value.agentId,
+      this.state.handsRun.value.id,
+    );
+    if (!reloadedHandsRun) {
+      throw new Error(
+        `Hands run '${this.state.handsRun.value.id}' was not found during checkpoint '${label}'.`,
+      );
+    }
+
+    if (reloadedHandsRun.value.state === 'waiting_for_user') {
+      await this.closeOpenSandboxSessions('cleanup');
+      throw new HandsReleasedForUserError(
+        handsRunExecutionResultSchema.parse({
+          handsRunId: reloadedHandsRun.value.id,
+          resultCode: reloadedHandsRun.value.resultCode,
+          startupOutcome: 'claimed_new_run',
+          summary:
+            reloadedTask.value.progressSummary?.headline ?? 'Hands released while waiting for user input.',
+          taskId: reloadedTask.value.id,
+          taskState: reloadedTask.value.state,
+        }),
+      );
+    }
 
     const checkpointedAt = this.now();
     const task = {
@@ -174,12 +204,12 @@ export class ActiveHandsRunSession {
 
     const updated = await this.options.repositories.execution.updateHandsRunExecution({
       handsRun: {
-        ...this.state.handsRun.value,
+        ...reloadedHandsRun.value,
         cancellationRequestedAt: task.cancellationRequestedAt,
         lastHeartbeatAt: checkpointedAt,
         updatedAt: checkpointedAt,
       },
-      handsRunEtag: this.state.handsRun.etag,
+      handsRunEtag: reloadedHandsRun.etag,
       runJournal: {
         ...this.state.runJournal.value,
         updatedAt: checkpointedAt,

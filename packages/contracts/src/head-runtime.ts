@@ -75,6 +75,7 @@ export const headEffectSummarySchema = z
     taskRequested: z.boolean(),
     scheduleChangeRequested: z.boolean(),
     approvalRequested: z.boolean(),
+    credentialRequested: z.boolean(),
     sandboxRequested: z.boolean(),
     memoryOperationRequested: z.boolean(),
   })

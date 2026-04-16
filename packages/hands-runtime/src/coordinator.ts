@@ -15,7 +15,11 @@ import {
 } from '@echidna-claw/domain';
 
 import { createDefaultHandlers } from './default-handlers.js';
-import { ActiveHandsRunSession, HandsCancellationError } from './session.js';
+import {
+  ActiveHandsRunSession,
+  HandsCancellationError,
+  HandsReleasedForUserError,
+} from './session.js';
 import type {
   ActiveExecutionState,
   HandsExecutionCoordinator,
@@ -298,6 +302,10 @@ export function createHandsExecutionCoordinator(
         return await session.finalizeOutcome(await handler.execute(session.buildContext()));
       } catch (error) {
         if (error instanceof HandsCancellationError) {
+          return error.result;
+        }
+
+        if (error instanceof HandsReleasedForUserError) {
           return error.result;
         }
 

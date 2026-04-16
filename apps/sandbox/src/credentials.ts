@@ -1,6 +1,8 @@
+import type { SandboxCredentialBinding } from '@echidna-claw/contracts';
+
 export interface SandboxCredentialResolver {
   resolveBindings(input: {
-    credentialAliases: string[];
+    credentialBindings: SandboxCredentialBinding[];
     sessionId: string;
   }): Promise<Record<string, string>>;
 }

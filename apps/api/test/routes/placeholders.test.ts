@@ -4,6 +4,7 @@ import {
   createAgent,
   createChannel,
   createCorrelationMetadata,
+  createCredentialRef,
   createIdempotencyRecord,
   createInboundMessage,
   createWorkingContext,
@@ -274,6 +275,102 @@ describe('route implementations and head runtime behavior', () => {
     expect(response.json().error.code).toBe('validation_failed');
   });
 
+  it('lists and revokes stored credentials through the admin routes', async () => {
+    const app = buildApiServer(createTestApiConfig());
+    apps.push(app);
+    const repositories = app.dependencies.adapters.repositories;
+    const correlation = createCorrelationMetadata({
+      idempotencyKey: 'idem_seed-credentials',
+      traceId: 'trc_seed-credentials',
+    });
+
+    await repositories.agents.create(
+      createAgent({
+        correlation,
+        id: 'agt_credential-routes',
+        lifecycleState: 'active',
+        primaryChannelId: 'chn_credential-routes',
+        provisioningState: 'active',
+      }),
+    );
+    await repositories.channels.create(
+      createChannel({
+        agentId: 'agt_credential-routes',
+        correlation,
+        credentialId: 'crd_credential-routes',
+        id: 'chn_credential-routes',
+        state: 'active',
+      }),
+    );
+    await repositories.credentials.createCredential({
+      credentialRef: createCredentialRef({
+        accessPolicyRef: 'github.api',
+        agentId: 'agt_credential-routes',
+        alias: 'github-token',
+        correlation,
+        createdAt: '2026-04-16T00:00:00.000Z',
+        displayName: 'GitHub personal access token',
+        encryptionKeyRef: 'platform://credential-envelope-key',
+        id: 'crd_credential-routes',
+        lastRotatedAt: '2026-04-16T00:00:00.000Z',
+        provider: 'github',
+        status: 'active',
+        updatedAt: '2026-04-16T00:00:00.000Z',
+      }),
+      plaintext: 'ghp-route-test-token',
+    });
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/api/admin/agents/agt_credential-routes/credentials',
+    });
+
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toMatchObject([
+      {
+        alias: 'github-token',
+        credentialId: 'crd_credential-routes',
+        displayName: 'GitHub personal access token',
+        provider: 'github',
+        status: 'active',
+      },
+    ]);
+
+    const revoked = await app.inject({
+      method: 'POST',
+      payload: {
+        correlation: createCorrelation('idem_request-revoke-credential', 'trc_trace-revoke-credential'),
+      },
+      url: '/api/admin/agents/agt_credential-routes/credentials/crd_credential-routes/revoke',
+    });
+
+    expect(revoked.statusCode).toBe(200);
+    expect(revoked.json()).toMatchObject({
+      credentialId: 'crd_credential-routes',
+      status: 'revoked',
+      revokedAt: expect.any(String),
+    });
+
+    const storedChannel = await repositories.channels.get(
+      'agt_credential-routes',
+      'chn_credential-routes',
+    );
+    expect(storedChannel?.value.credentialId).toBeUndefined();
+
+    const listedAgain = await app.inject({
+      method: 'GET',
+      url: '/api/admin/agents/agt_credential-routes/credentials',
+    });
+
+    expect(listedAgain.statusCode).toBe(200);
+    expect(listedAgain.json()).toMatchObject([
+      {
+        credentialId: 'crd_credential-routes',
+        status: 'revoked',
+      },
+    ]);
+  });
+
   it('executes trusted head turns in local-minimal mode', async () => {
     const config = createTestApiConfig();
     const app = buildApiServer(config);
@@ -311,6 +408,7 @@ describe('route implementations and head runtime behavior', () => {
     expect(response.json()).toMatchObject({
       effectSummary: {
         approvalRequested: false,
+        credentialRequested: false,
         memoryOperationRequested: false,
         sandboxRequested: false,
         scheduleChangeRequested: false,

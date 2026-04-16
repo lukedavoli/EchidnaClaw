@@ -83,6 +83,7 @@ function createScheduleOccurrenceTask(input: {
     currentRunJournalId: null,
     currentHandsRunId: null,
     activeApprovalId: null,
+    activeCredentialCaptureId: null,
     mergeKey,
     mergedIntoTaskId: null,
     attemptCount: 1,

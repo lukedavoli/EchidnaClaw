@@ -7,6 +7,7 @@ function createEmptyEffectSummary(): HeadEffectSummary {
     taskRequested: false,
     scheduleChangeRequested: false,
     approvalRequested: false,
+    credentialRequested: false,
     sandboxRequested: false,
     memoryOperationRequested: false,
   };

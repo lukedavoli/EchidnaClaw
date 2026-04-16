@@ -49,6 +49,8 @@ import { ConflictError, NotFoundError } from '../../http/errors.js';
 import { createHeadToolCatalog } from './head-tool-catalog.js';
 import type { ScheduleMutationService } from './schedule-mutation-service.js';
 import type { TaskQueueService } from './task-queue-service.js';
+import type { ApprovalLifecycleService } from './approval-lifecycle-service.js';
+import type { CredentialLifecycleService } from './credential-lifecycle-service.js';
 import type {
   WorkingContextSummaryService,
   WorkingContextSummarySnapshot,
@@ -85,6 +87,7 @@ function createEmptyEffectSummary(): HeadEffectSummary {
     taskRequested: false,
     scheduleChangeRequested: false,
     approvalRequested: false,
+    credentialRequested: false,
     sandboxRequested: false,
     memoryOperationRequested: false,
   };
@@ -122,6 +125,7 @@ function createWorkingContextRecord(input: {
     conversationCursor: undefined,
     openTaskIds: [],
     pendingApprovalIds: [],
+    pendingCredentialCaptureIds: [],
   };
 }
 
@@ -704,7 +708,9 @@ async function reconcileDueTaskBeforeCommit(options: {
 }
 
 export function createHeadRuntimeService(options: {
+  approvalLifecycleService: ApprovalLifecycleService;
   config: ApiRuntimeConfig;
+  credentialLifecycleService: CredentialLifecycleService;
   headRuntime: HeadRuntimeAdapter;
   logger: Logger;
   repositories: RepositoryBundle;
@@ -884,7 +890,9 @@ export function createHeadRuntimeService(options: {
       const toolCatalog = createHeadToolCatalog({
         activeHeadTurnCount: activeHeadTurns.length,
         agent: storedAgent.value,
+        approvalLifecycleService: options.approvalLifecycleService,
         channel: storedChannel.value,
+        credentialLifecycleService: options.credentialLifecycleService,
         headTurn: createdHeadTurn.value,
         repositoryConfig: options.repositoryConfig,
         scheduleMutationService: options.scheduleMutationService,

@@ -15,6 +15,7 @@ import {
   approvalIdSchema,
   artifactIdSchema,
   channelIdSchema,
+  credentialCaptureIdSchema,
   credentialIdSchema,
   handsRunIdSchema,
   inboundMessageIdSchema,
@@ -29,12 +30,14 @@ import {
 } from './identifiers.js';
 import {
   agentSchema,
+  approvalStateSchema,
   channelStateSchema,
+  credentialStatusSchema,
   HandsRun,
   HeadTurn,
   outboundMessageActionSchema,
   SandboxSession,
-  approvalStateSchema,
+  sandboxCredentialBindingSchema,
   usageEventSchema,
 } from './records.js';
 
@@ -54,6 +57,7 @@ export const handsReleaseForUserRequestSchema = z
     handsRunId: handsRunIdSchema,
     releasedAt: isoDateTimeSchema,
     approvalId: approvalIdSchema.optional(),
+    credentialCaptureId: credentialCaptureIdSchema.optional(),
     correlation: correlationMetadataSchema,
   })
   .strict();
@@ -76,6 +80,7 @@ export const sandboxCreateSessionRequestSchema = z
     handsRunId: handsRunIdSchema,
     policyName: nonEmptyStringSchema,
     packageAllowlistName: nonEmptyStringSchema.optional(),
+    credentialBindings: z.array(sandboxCredentialBindingSchema).default([]),
     credentialAliases: z.array(nonEmptyStringSchema).default([]),
     workingDirectory: nonEmptyStringSchema.optional(),
     workspaceLabel: nonEmptyStringSchema.optional(),
@@ -219,6 +224,22 @@ export const adminAgentSummarySchema = z
 
 export const adminAgentDetailSchema = adminAgentSummarySchema;
 
+export const adminCredentialSummarySchema = z
+  .object({
+    accessPolicyRef: nonEmptyStringSchema,
+    alias: nonEmptyStringSchema,
+    credentialId: credentialIdSchema,
+    displayName: nonEmptyStringSchema,
+    expiresAt: isoDateTimeSchema.nullable(),
+    lastRotatedAt: isoDateTimeSchema.nullable(),
+    lastUsedAt: isoDateTimeSchema.nullable(),
+    provider: nonEmptyStringSchema,
+    replacedByCredentialId: credentialIdSchema.nullable(),
+    revokedAt: isoDateTimeSchema.nullable(),
+    status: credentialStatusSchema,
+  })
+  .strict();
+
 export const completeAgentProvisioningRequestSchema = z
   .object({
     agentId: agentIdSchema,
@@ -239,6 +260,14 @@ export const recordAgentProvisioningFailureRequestSchema = z
     errorCode: nonEmptyStringSchema.optional(),
     errorMessage: nonEmptyStringSchema.optional(),
     failedAt: isoDateTimeSchema.optional(),
+  })
+  .strict();
+
+export const webRevokeCredentialRequestSchema = z
+  .object({
+    agentId: agentIdSchema,
+    correlation: correlationMetadataSchema,
+    credentialId: credentialIdSchema,
   })
   .strict();
 
@@ -307,10 +336,12 @@ export type WebRetryAgentProvisioningRequest = z.infer<typeof webRetryAgentProvi
 export type AdminPrimaryChannelSummary = z.infer<typeof adminPrimaryChannelSummarySchema>;
 export type AdminAgentSummary = z.infer<typeof adminAgentSummarySchema>;
 export type AdminAgentDetail = z.infer<typeof adminAgentDetailSchema>;
+export type AdminCredentialSummary = z.infer<typeof adminCredentialSummarySchema>;
 export type CompleteAgentProvisioningRequest = z.infer<typeof completeAgentProvisioningRequestSchema>;
 export type RecordAgentProvisioningFailureRequest = z.infer<
   typeof recordAgentProvisioningFailureRequestSchema
 >;
+export type WebRevokeCredentialRequest = z.infer<typeof webRevokeCredentialRequestSchema>;
 export type AnalyticsOverview = z.infer<typeof analyticsOverviewSchema>;
 export type SendChannelMessageRequest = z.infer<typeof sendChannelMessageRequestSchema>;
 export type TrustedChannelIngressDispatchRequest = z.infer<
@@ -353,5 +384,7 @@ export interface WebControlPlaneService {
   completeAgentProvisioning(input: CompleteAgentProvisioningRequest): Promise<AdminAgentDetail>;
   recordAgentProvisioningFailure(input: RecordAgentProvisioningFailureRequest): Promise<AdminAgentDetail>;
   getApprovalState(approvalId: z.infer<typeof approvalIdSchema>): Promise<z.infer<typeof approvalStateSchema>>;
+  listCredentials(agentId: z.infer<typeof agentIdSchema>): Promise<AdminCredentialSummary[]>;
+  revokeCredential(input: WebRevokeCredentialRequest): Promise<AdminCredentialSummary>;
   getAnalyticsOverview(): Promise<AnalyticsOverview>;
 }

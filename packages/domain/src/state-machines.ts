@@ -11,7 +11,7 @@ import {
 } from '@echidna-claw/contracts';
 
 const allowedTaskTransitions: Record<TaskState, readonly TaskState[]> = {
-  queued: ['running', 'cancelled', 'deferred'],
+  queued: ['running', 'waiting_for_user', 'cancelled', 'deferred'],
   running: ['waiting_for_user', 'completed', 'failed', 'cancelled', 'deferred'],
   waiting_for_user: ['queued', 'failed', 'cancelled'],
   completed: [],

@@ -20,6 +20,81 @@
       "initialResponsibilitiesSummary": "Start from the shared factory-default operator profile until scheduling and Telegram handoff are completed in later steps."
     }
   },
+  "approvals": {
+    "policy": {
+      "categories": [
+        {
+          "id": "external_write",
+          "displayName": "Write to an external system",
+          "stepUpRequired": false,
+          "defaultExpiryMinutes": 60
+        },
+        {
+          "id": "send",
+          "displayName": "Send through an external service",
+          "stepUpRequired": true,
+          "defaultExpiryMinutes": 60
+        },
+        {
+          "id": "delete",
+          "displayName": "Delete or remove data",
+          "stepUpRequired": true,
+          "defaultExpiryMinutes": 30
+        },
+        {
+          "id": "purchase",
+          "displayName": "Spend money or place an order",
+          "stepUpRequired": true,
+          "defaultExpiryMinutes": 15
+        },
+        {
+          "id": "credential_change",
+          "displayName": "Change a stored credential",
+          "stepUpRequired": true,
+          "defaultExpiryMinutes": 30
+        },
+        {
+          "id": "bulk_update",
+          "displayName": "Apply a bulk update",
+          "stepUpRequired": true,
+          "defaultExpiryMinutes": 30
+        },
+        {
+          "id": "other",
+          "displayName": "Other guarded action",
+          "stepUpRequired": false,
+          "defaultExpiryMinutes": 60
+        }
+      ]
+    }
+  },
+  "credentials": {
+    "services": [
+      {
+        "provider": "telegram",
+        "alias": "telegram-bot-token",
+        "displayName": "Telegram bot token",
+        "reasonTemplate": "Used to send and acknowledge Telegram messages for this agent.",
+        "storageNotice": "It will be stored encrypted for this agent until you revoke or replace it.",
+        "accessPolicyRef": "telegram.bot",
+        "sandboxBindings": []
+      },
+      {
+        "provider": "github",
+        "alias": "github-token",
+        "displayName": "GitHub personal access token",
+        "reasonTemplate": "Used when this agent needs to authenticate to GitHub APIs or repositories.",
+        "storageNotice": "It will be stored encrypted for this agent until you revoke or replace it.",
+        "accessPolicyRef": "github.api",
+        "sandboxBindings": [
+          {
+            "exposure": "env",
+            "targetName": "GITHUB_TOKEN"
+          }
+        ]
+      }
+    ]
+  },
   "sandbox": {
     "defaultPolicy": "standard",
     "defaultPackageAllowlist": "default-runtime-pnpm",

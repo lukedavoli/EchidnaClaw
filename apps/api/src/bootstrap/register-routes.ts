@@ -7,6 +7,7 @@ import {
 import { registerAdminAgentRoutes } from '../http/routes/admin/agents.js';
 import { registerAdminAnalyticsRoutes } from '../http/routes/admin/analytics.js';
 import { registerAdminApprovalRoutes } from '../http/routes/admin/approvals.js';
+import { registerAdminCredentialRoutes } from '../http/routes/admin/credentials.js';
 import { registerHealthRoutes } from '../http/routes/health.js';
 import { registerHeadRuntimeRoutes } from '../http/routes/internal/head.js';
 import { registerHandsRuntimeRoutes } from '../http/routes/internal/hands.js';
@@ -25,6 +26,7 @@ export function registerRoutes(app: FastifyInstance): void {
       registerAdminAgentRoutes(adminApp);
       registerAdminAnalyticsRoutes(adminApp);
       registerAdminApprovalRoutes(adminApp);
+      registerAdminCredentialRoutes(adminApp);
     },
     { prefix: '/api/admin' },
   );

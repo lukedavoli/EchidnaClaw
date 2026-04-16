@@ -10,6 +10,8 @@ import {
 } from '../services/channel/dispatchers.js';
 import { createOutboundMessagingService } from '../services/channel/outbound-messaging-service.js';
 import { createTelegramIngressService } from '../services/channel/telegram-ingress-service.js';
+import { createApprovalLifecycleService } from '../services/runtime/approval-lifecycle-service.js';
+import { createCredentialLifecycleService } from '../services/runtime/credential-lifecycle-service.js';
 import { createHandsRuntimeService } from '../services/runtime/hands-runtime-service.js';
 import { createHeadRuntimeService } from '../services/runtime/head-runtime-service.js';
 import { createSandboxRuntimeService } from '../services/runtime/sandbox-runtime-service.js';
@@ -40,9 +42,6 @@ export function registerServices(options: {
   });
   const appLogger = options.loggerFactory.createLogger({ component: 'api_app' });
   const repositoryConfig = loadRepositoryConfig();
-  const approvalCallbackService = createApprovalActionDispatcher({
-    logger: options.loggerFactory.createLogger({ service: 'approval_callback' }),
-  });
   const outboundMessagingService = createOutboundMessagingService({
     logger: options.loggerFactory.createLogger({ service: 'outbound_messaging' }),
     repositories: adapters.adapters.repositories,
@@ -54,6 +53,32 @@ export function registerServices(options: {
     repositories: adapters.adapters.repositories,
   });
   taskQueueServiceRef = taskQueueService;
+  const handsRuntimeService = createHandsRuntimeService({
+    handsJobs: adapters.adapters.handsJobs,
+    logger: options.loggerFactory.createLogger({ service: 'hands_runtime' }),
+    repositories: adapters.adapters.repositories,
+    taskQueueService,
+  });
+  const approvalLifecycleService = createApprovalLifecycleService({
+    handsRuntimeService,
+    logger: options.loggerFactory.createLogger({ service: 'approval_lifecycle' }),
+    outboundMessagingService,
+    repositories: adapters.adapters.repositories,
+    repositoryConfig,
+    taskQueueService,
+  });
+  const credentialLifecycleService = createCredentialLifecycleService({
+    handsRuntimeService,
+    logger: options.loggerFactory.createLogger({ service: 'credential_lifecycle' }),
+    outboundMessagingService,
+    repositories: adapters.adapters.repositories,
+    repositoryConfig,
+    taskQueueService,
+  });
+  const approvalCallbackService = createApprovalActionDispatcher({
+    approvalLifecycleService,
+    logger: options.loggerFactory.createLogger({ service: 'approval_callback' }),
+  });
   const workingContextSummaryService = createWorkingContextSummaryService({
     logger: options.loggerFactory.createLogger({ service: 'working_context_summary' }),
     summarizer: adapters.adapters.foundry.workingContextSummarizer,
@@ -62,7 +87,9 @@ export function registerServices(options: {
     repositories: adapters.adapters.repositories,
   });
   const headRuntimeService = createHeadRuntimeService({
+    approvalLifecycleService,
     config: options.config,
+    credentialLifecycleService,
     headRuntime: adapters.adapters.foundry.headRuntime,
     logger: options.loggerFactory.createLogger({ service: 'head_runtime' }),
     repositories: adapters.adapters.repositories,
@@ -91,15 +118,11 @@ export function registerServices(options: {
     repositoryConfig,
     services: {
       approvalCallbackService,
-      handsRuntimeService: createHandsRuntimeService({
-        handsJobs: adapters.adapters.handsJobs,
-        logger: options.loggerFactory.createLogger({ service: 'hands_runtime' }),
-        repositories: adapters.adapters.repositories,
-        taskQueueService,
-      }),
+      handsRuntimeService,
       outboundMessagingService,
       headRuntimeService,
       sandboxRuntimeService: createSandboxRuntimeService({
+        credentialLifecycleService,
         logger: options.loggerFactory.createLogger({ service: 'sandbox_runtime' }),
         repositories: adapters.adapters.repositories,
         repositoryConfig,
@@ -113,12 +136,14 @@ export function registerServices(options: {
       taskQueueService,
       telegramIngressService: createTelegramIngressService({
         approvalCallbackService,
+        credentialLifecycleService,
         logger: options.loggerFactory.createLogger({ service: 'telegram_ingress' }),
         repositories: adapters.adapters.repositories,
         telegramBotApi: adapters.adapters.telegramBotApi,
         trustedChannelIngressDispatcher,
       }),
       webControlPlaneService: createWebControlPlaneService({
+        credentialLifecycleService,
         logger: options.loggerFactory.createLogger({ service: 'web_control_plane' }),
         repositories: adapters.adapters.repositories,
         repositoryConfig,

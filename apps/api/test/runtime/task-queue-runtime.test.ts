@@ -21,6 +21,7 @@ function createEmptyEffectSummary() {
     taskRequested: false,
     scheduleChangeRequested: false,
     approvalRequested: false,
+    credentialRequested: false,
     sandboxRequested: false,
     memoryOperationRequested: false,
   };

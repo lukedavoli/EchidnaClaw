@@ -3,7 +3,6 @@ import {
   handsDispatchResultSchema,
   handsEnqueueFollowUpRequestSchema,
   handsReleaseForUserRequestSchema,
-  handsRunSchema,
   handsStartRunRequestSchema,
   type EnqueueTaskRequest,
   type HandsDispatchResult,
@@ -17,6 +16,7 @@ import {
 } from '@echidna-claw/contracts';
 import { DefaultAzureCredential } from '@azure/identity';
 import { createHandsExecutionCoordinator } from '@echidna-claw/hands-runtime';
+import { transitionHandsRunState, transitionTaskState } from '@echidna-claw/domain';
 import type { Logger } from '@echidna-claw/observability';
 
 import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
@@ -90,6 +90,56 @@ function createDispatchResult(
   });
 }
 
+async function releaseHandsRunForUser(input: {
+  repositories: RepositoryBundle;
+  request: HandsReleaseForUserRequest;
+}): Promise<HandsRun> {
+  const request = handsReleaseForUserRequestSchema.parse(input.request);
+  const storedHandsRun = await input.repositories.execution.findHandsRun(request.handsRunId);
+  if (!storedHandsRun) {
+    throw new NotFoundError(`Hands run '${request.handsRunId}' was not found.`);
+  }
+
+  if (storedHandsRun.value.state === 'waiting_for_user') {
+    return storedHandsRun.value;
+  }
+
+  if (storedHandsRun.value.state !== 'running') {
+    return storedHandsRun.value;
+  }
+
+  const storedTask = await input.repositories.tasks.getTask(
+    storedHandsRun.value.agentId,
+    storedHandsRun.value.taskId,
+  );
+  if (!storedTask) {
+    throw new NotFoundError(`Task '${storedHandsRun.value.taskId}' was not found.`);
+  }
+
+  const releasedTask =
+    storedTask.value.state === 'waiting_for_user'
+      ? {
+          ...storedTask.value,
+          currentHandsRunId: null,
+          updatedAt: request.releasedAt,
+        }
+      : transitionTaskState(storedTask.value, 'waiting_for_user', request.releasedAt);
+  const releasedHandsRun = transitionHandsRunState(
+    storedHandsRun.value,
+    'waiting_for_user',
+    request.releasedAt,
+  );
+
+  return (
+    await input.repositories.execution.releaseHandsRun({
+      handsRun: releasedHandsRun,
+      handsRunEtag: storedHandsRun.etag,
+      task: releasedTask,
+      taskEtag: storedTask.etag,
+    })
+  ).handsRun.value;
+}
+
 function createHandsUrl(baseUrl: string, path: string): string {
   return new URL(path, `${baseUrl.replace(/\/$/, '')}/`).toString();
 }
@@ -160,14 +210,17 @@ async function assertRuntimeResponseOk(response: Response): Promise<void> {
   }
 }
 
-function createHttpHandsJobTriggerAdapter(config: ApiRuntimeConfig): HandsJobTriggerAdapter {
+function createHttpHandsJobTriggerAdapter(options: {
+  config: ApiRuntimeConfig;
+  repositories: RepositoryBundle;
+}): HandsJobTriggerAdapter {
   async function callHands(path: string, init: RequestInit): Promise<Response> {
     try {
-      return await fetch(createHandsUrl(config.hands.baseUrl, path), {
+      return await fetch(createHandsUrl(options.config.hands.baseUrl, path), {
         ...init,
         headers: {
           'content-type': 'application/json',
-          [INTERNAL_RUNTIME_AUTH_HEADER]: config.internalRuntime.authToken,
+          [INTERNAL_RUNTIME_AUTH_HEADER]: options.config.internalRuntime.authToken,
           ...(init.headers ?? {}),
         },
         signal: AbortSignal.timeout(10000),
@@ -181,13 +234,10 @@ function createHttpHandsJobTriggerAdapter(config: ApiRuntimeConfig): HandsJobTri
 
   return {
     async releaseForUser(input: HandsReleaseForUserRequest): Promise<HandsRun> {
-      const request = handsReleaseForUserRequestSchema.parse(input);
-      const response = await callHands('/internal/hands/release-for-user', {
-        body: JSON.stringify(request),
-        method: 'POST',
+      return releaseHandsRunForUser({
+        repositories: options.repositories,
+        request: input,
       });
-      await assertRuntimeResponseOk(response);
-      return handsRunSchema.parse(await response.json());
     },
     async startRun(input: HandsStartRunRequest): Promise<HandsDispatchResult> {
       const request = handsStartRunRequestSchema.parse(input);
@@ -394,11 +444,14 @@ function sanitizeWorkerInstanceId(input: string): string {
 function createCloudHandsJobTriggerAdapter(options: {
   config: ApiRuntimeConfig;
   launcher: CloudHandsJobLauncher;
+  repositories: RepositoryBundle;
 }): HandsJobTriggerAdapter {
   return {
-    async releaseForUser(_input: HandsReleaseForUserRequest): Promise<HandsRun> {
-      void _input;
-      throw new NotImplementedYetError('Hands release-for-user is reserved for Step 16.');
+    async releaseForUser(input: HandsReleaseForUserRequest): Promise<HandsRun> {
+      return releaseHandsRunForUser({
+        repositories: options.repositories,
+        request: input,
+      });
     },
     async startRun(input: HandsStartRunRequest): Promise<HandsDispatchResult> {
       const request = handsStartRunRequestSchema.parse(input);
@@ -481,9 +534,11 @@ function createLocalHandsJobTriggerAdapter(options: {
   });
 
   return {
-    async releaseForUser(_input: HandsReleaseForUserRequest): Promise<HandsRun> {
-      void _input;
-      throw new NotImplementedYetError('Hands release-for-user is reserved for Step 16.');
+    async releaseForUser(input: HandsReleaseForUserRequest): Promise<HandsRun> {
+      return releaseHandsRunForUser({
+        repositories: options.repositories,
+        request: input,
+      });
     },
     async startRun(input: HandsStartRunRequest): Promise<HandsDispatchResult> {
       const request = handsStartRunRequestSchema.parse(input);
@@ -531,10 +586,14 @@ export function createRuntimeAdapters(options: {
     options.config.runtimeMode === 'local-minimal'
       ? createLocalHandsJobTriggerAdapter(options)
       : options.config.runtimeMode === 'shared-cloud'
-        ? createHttpHandsJobTriggerAdapter(options.config)
+        ? createHttpHandsJobTriggerAdapter({
+            config: options.config,
+            repositories: options.repositories,
+          })
         : createCloudHandsJobTriggerAdapter({
             config: options.config,
             launcher: options.cloudHandsJobLauncher ?? createAzureContainerAppsJobLauncher(options.logger),
+            repositories: options.repositories,
           });
 
   return {
