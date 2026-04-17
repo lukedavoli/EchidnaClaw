@@ -24,4 +24,4 @@ RUN pnpm build
 
 EXPOSE 4173
 
-CMD ["pnpm", "--filter", "@echidna-claw/web", "preview", "--", "--host", "0.0.0.0", "--port", "4173"]
+CMD ["pnpm", "--filter", "@echidna-claw/web", "exec", "vite", "preview", "--host", "0.0.0.0", "--port", "4173"]

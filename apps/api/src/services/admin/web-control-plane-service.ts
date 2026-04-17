@@ -10,6 +10,7 @@ import { NotFoundError } from '../../http/errors.js';
 import { createAgentRegistryService } from './agent-registry-service.js';
 import type { CredentialLifecycleService } from '../runtime/credential-lifecycle-service.js';
 import type { AnalyticsQueryService } from './analytics-query-service.js';
+import type { TelegramProvisioningService } from '../channel/contracts.js';
 
 export function createWebControlPlaneService(options: {
   analyticsQueryService: AnalyticsQueryService;
@@ -17,6 +18,7 @@ export function createWebControlPlaneService(options: {
   logger: Logger;
   repositories: RepositoryBundle;
   repositoryConfig: RepositoryConfig;
+  telegramProvisioningService: TelegramProvisioningService;
 }): WebControlPlaneService {
   const agentRegistry = createAgentRegistryService({
     logger: options.logger,
@@ -44,6 +46,10 @@ export function createWebControlPlaneService(options: {
     async getAgent(agentId) {
       options.logger.info('web_control_plane.get_agent', { agentId });
       return agentRegistry.getAgent(agentId);
+    },
+    async getTelegramProvisioningHandoff(agentId) {
+      options.logger.info('web_control_plane.get_telegram_provisioning_handoff', { agentId });
+      return options.telegramProvisioningService.getHandoff(agentId);
     },
     async getApprovalState(approvalId: ApprovalId) {
       options.logger.info('web_control_plane.get_approval_state', { approvalId });
@@ -76,6 +82,17 @@ export function createWebControlPlaneService(options: {
     async restoreAgent(input) {
       options.logger.info('web_control_plane.restore_agent', { agentId: input.agentId });
       return agentRegistry.restoreAgent(input);
+    },
+    async submitTelegramBotToken(input) {
+      options.logger.info('web_control_plane.submit_telegram_bot_token', {
+        agentId: input.agentId,
+      });
+      return options.telegramProvisioningService.submitBotToken({
+        agentId: input.agentId,
+        botToken: input.botToken,
+        correlation: input.correlation,
+        ...(input.flowKind ? { flowKind: input.flowKind } : {}),
+      });
     },
     async softDeleteAgent(input) {
       options.logger.info('web_control_plane.soft_delete_agent', { agentId: input.agentId });

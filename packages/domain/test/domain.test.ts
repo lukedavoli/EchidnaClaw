@@ -21,18 +21,24 @@ import {
   createAgentRegistryRecords,
   createDeterministicInboundMessageId,
   createDeterministicOutboundMessageId,
+  createDeterministicTelegramProvisioningSessionId,
   createDeterministicAgentId,
   createDeterministicPrimaryChannelId,
   createInboundMessageIdempotencyKey,
+  createTelegramProvisioningBootstrapCode,
+  createTelegramProvisioningBootstrapExpiry,
   createTelegramChannelUpdateKey,
   createSandboxSessionIdempotencyKey,
   createScheduleOccurrenceKey,
   createTaskMergeKey,
   createTaskStartRequestIdempotencyKey,
   createTaskCreationIdempotencyKey,
+  buildTelegramProvisioningDeepLink,
   decodeTelegramCallbackData,
   encodeTelegramCallbackData,
+  extractTelegramProvisioningBootstrapCode,
   getQueueLaneRank,
+  isTelegramProvisioningBootstrapExpired,
   markTaskLaunchFailed,
   markTaskLaunchRequested,
   getLocalCalendarDate,
@@ -538,6 +544,31 @@ describe('domain invariants and helpers', () => {
       kind: 'approval_decision',
     });
     expect(decodeTelegramCallbackData('ec1|a|bad|y')).toBeNull();
+  });
+
+  it('builds Telegram provisioning bootstrap helpers', () => {
+    const bootstrapCode = createTelegramProvisioningBootstrapCode();
+    const bootstrapExpiry = createTelegramProvisioningBootstrapExpiry(
+      '2026-04-12T00:00:00.000Z',
+      60_000,
+    );
+
+    expect(bootstrapCode).toMatch(/^[a-f0-9]{24}$/);
+    expect(createDeterministicTelegramProvisioningSessionId('agt_domain', 2)).toContain('tps_');
+    expect(bootstrapExpiry).toBe('2026-04-12T00:01:00.000Z');
+    expect(
+      buildTelegramProvisioningDeepLink('@echidna_claw_bot', 'bootstrap code'),
+    ).toBe('https://t.me/echidna_claw_bot?start=bootstrap%20code');
+    expect(extractTelegramProvisioningBootstrapCode(`/start ${bootstrapCode}`)).toBe(bootstrapCode);
+    expect(extractTelegramProvisioningBootstrapCode('   plain-bootstrap-code   ')).toBe(
+      'plain-bootstrap-code',
+    );
+    expect(isTelegramProvisioningBootstrapExpired(bootstrapExpiry, '2026-04-12T00:00:59.000Z')).toBe(
+      false,
+    );
+    expect(isTelegramProvisioningBootstrapExpired(bootstrapExpiry, '2026-04-12T00:01:00.000Z')).toBe(
+      true,
+    );
   });
 
   it('creates deterministic registry records and resets failed provisioning for retry', () => {

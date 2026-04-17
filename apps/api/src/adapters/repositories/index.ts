@@ -14,6 +14,7 @@ import {
   type RunJournalRepository,
   type ScheduleRepository,
   type TaskRepository,
+  type TelegramProvisioningSessionRepository,
   type UsageEventRepository,
   type WorkingContextRepository,
 } from '@echidna-claw/persistence';
@@ -34,6 +35,7 @@ export interface RepositoryBundle {
   runJournals: RunJournalRepository;
   schedules: ScheduleRepository;
   tasks: TaskRepository;
+  telegramProvisioningSessions: TelegramProvisioningSessionRepository;
   usageEvents: UsageEventRepository;
   workingContexts: WorkingContextRepository;
 }
@@ -88,6 +90,7 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
       runJournals: suite.runJournals,
       schedules: suite.schedules,
       tasks: suite.tasks,
+      telegramProvisioningSessions: suite.telegramProvisioningSessions,
       usageEvents: suite.usageEvents,
       workingContexts: suite.workingContexts,
     },

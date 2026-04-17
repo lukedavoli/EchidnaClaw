@@ -1,6 +1,7 @@
 import {
   agentIdSchema,
   correlationMetadataSchema,
+  submitTelegramBotTokenRequestSchema,
   webCreateAgentRequestSchema,
 } from '@echidna-claw/contracts';
 import type { FastifyInstance } from 'fastify';
@@ -17,6 +18,13 @@ export function registerAdminAgentRoutes(app: FastifyInstance): void {
   app.get('/agents/:agentId', async (request) => {
     const params = agentIdParamsSchema.parse(request.params) as z.infer<typeof agentIdParamsSchema>;
     return app.dependencies.services.webControlPlaneService.getAgent(params.agentId);
+  });
+
+  app.get('/agents/:agentId/telegram-provisioning', async (request) => {
+    const params = agentIdParamsSchema.parse(request.params) as z.infer<typeof agentIdParamsSchema>;
+    return app.dependencies.services.webControlPlaneService.getTelegramProvisioningHandoff(
+      params.agentId,
+    );
   });
 
   app.post('/agents', async (request, reply) => {
@@ -66,6 +74,22 @@ export function registerAdminAgentRoutes(app: FastifyInstance): void {
     return app.dependencies.services.webControlPlaneService.retryAgentProvisioning({
       agentId: params.agentId,
       correlation: body.correlation,
+    });
+  });
+
+  app.post('/agents/:agentId/telegram-provisioning/token', async (request) => {
+    const params = agentIdParamsSchema.parse(request.params) as z.infer<typeof agentIdParamsSchema>;
+    const body = submitTelegramBotTokenRequestSchema.parse(request.body);
+    bindRequestCorrelation(request, {
+      agentId: params.agentId,
+      correlation: body.correlation,
+    });
+
+    return app.dependencies.services.webControlPlaneService.submitTelegramBotToken({
+      agentId: params.agentId,
+      botToken: body.botToken,
+      correlation: body.correlation,
+      ...(body.flowKind ? { flowKind: body.flowKind } : {}),
     });
   });
 }

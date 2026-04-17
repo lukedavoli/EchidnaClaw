@@ -1,14 +1,17 @@
 import {
   adminAgentDetailSchema,
   adminAgentSummarySchema,
+  adminTelegramProvisioningHandoffSchema,
   approvalIdSchema,
   analyticsOverviewSchema,
   approvalStateSchema,
   errorResponseSchema,
   readinessResponseSchema,
+  submitTelegramBotTokenRequestSchema,
   webCreateAgentRequestSchema,
   type AdminAgentDetail,
   type AdminAgentSummary,
+  type AdminTelegramProvisioningHandoff,
   type Agent,
   type AnalyticsOverview,
   type ReadinessResponse,
@@ -54,6 +57,12 @@ export function createWebApiClient(options: CreateWebApiClientOptions = {}) {
         schema: adminAgentDetailSchema,
       });
     },
+    getTelegramProvisioningHandoff(agentId: string) {
+      return http.request({
+        path: `/api/admin/agents/${agentId}/telegram-provisioning`,
+        schema: adminTelegramProvisioningHandoffSchema,
+      }) as Promise<AdminTelegramProvisioningHandoff>;
+    },
     getAgent(agentId: string) {
       return http.request({
         path: `/api/admin/agents/${agentId}`,
@@ -94,6 +103,22 @@ export function createWebApiClient(options: CreateWebApiClientOptions = {}) {
         path: `/api/admin/agents/${agentId}/provisioning/retry`,
         schema: adminAgentDetailSchema,
       }) as Promise<AdminAgentDetail>;
+    },
+    submitTelegramBotToken(
+      agentId: string,
+      input: {
+        botToken: string;
+      },
+    ) {
+      return http.request({
+        body: submitTelegramBotTokenRequestSchema.parse({
+          correlation: createMutationCorrelation(),
+          botToken: input.botToken,
+        }),
+        method: 'POST',
+        path: `/api/admin/agents/${agentId}/telegram-provisioning/token`,
+        schema: adminTelegramProvisioningHandoffSchema,
+      }) as Promise<AdminTelegramProvisioningHandoff>;
     },
     restoreAgent(agentId: string) {
       return http.request({

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   adminAgentSummarySchema,
+  adminTelegramProvisioningHandoffSchema,
   agentSchema,
   channelActionResponseSchema,
   credentialRefSchema,
@@ -20,6 +21,7 @@ import {
   sandboxExecuteCommandResultSchema,
   sandboxSessionSchema,
   sendChannelMessageRequestSchema,
+  submitTelegramBotTokenRequestSchema,
   taskSchema,
 } from '../src/index.js';
 
@@ -105,6 +107,43 @@ describe('contracts schemas', () => {
       primaryChannel: {
         state: 'provisioning_failed',
       },
+    });
+  });
+
+  it('parses telegram provisioning handoff payloads and token submissions', () => {
+    const handoff = adminTelegramProvisioningHandoffSchema.parse({
+      agentId: 'agt_summary',
+      channelId: 'chn_summary',
+      provider: 'telegram',
+      attemptNumber: 2,
+      state: 'awaiting_operator_binding',
+      requiresBotToken: false,
+      botHandle: 'summary_bot',
+      botDisplayName: 'Summary Bot',
+      openTelegramUrl: 'https://t.me/summary_bot?start=bootstrap-code',
+      operatorActionUrl: 'https://t.me/BotFather',
+      instructions: ['Open the bot chat.', 'Send the bootstrap code from your operator account.'],
+      bootstrapCode: 'bootstrap-code',
+      bootstrapExpiresAt: '2026-04-12T00:30:00.000Z',
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    });
+
+    expect(handoff).toMatchObject({
+      agentId: 'agt_summary',
+      attemptNumber: 2,
+      state: 'awaiting_operator_binding',
+      botHandle: 'summary_bot',
+    });
+    expect('botToken' in handoff).toBe(false);
+
+    expect(
+      submitTelegramBotTokenRequestSchema.parse({
+        correlation,
+        botToken: '123456:telegram-secret-token',
+      }),
+    ).toMatchObject({
+      botToken: '123456:telegram-secret-token',
     });
   });
 

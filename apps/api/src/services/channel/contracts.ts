@@ -1,10 +1,16 @@
 import type {
+  AdminTelegramProvisioningHandoff,
   ChannelActionResponse,
   ChannelId,
+  CorrelationMetadata,
+  InboundMessage,
   OutboundMessage,
   SendChannelMessageRequest,
   TrustedChannelIngressDispatchRequest,
 } from '@echidna-claw/contracts';
+import type { NormalizedTelegramUpdate } from './telegram-normalization.js';
+import type { StoredRecord } from '@echidna-claw/persistence';
+import type { Agent, Channel, TelegramProvisioningSession } from '@echidna-claw/contracts';
 
 export type TelegramWebhookUser = {
   first_name?: string;
@@ -57,6 +63,34 @@ export interface OutboundMessagingService {
 
 export interface ApprovalCallbackService {
   handleActionResponse(input: ChannelActionResponse): Promise<void>;
+}
+
+export interface TelegramProvisioningService {
+  completeBootstrapBinding(input: {
+    agent: StoredRecord<Agent>;
+    channel: StoredRecord<Channel>;
+    correlation: CorrelationMetadata;
+    inboundMessage: InboundMessage;
+    normalized: NormalizedTelegramUpdate;
+    session: StoredRecord<TelegramProvisioningSession>;
+  }): Promise<void>;
+  evaluateBootstrapUpdate(input: {
+    channel: StoredRecord<Channel>;
+    normalized: NormalizedTelegramUpdate;
+    receivedAt: string;
+  }): Promise<{
+    handled: boolean;
+    session?: StoredRecord<TelegramProvisioningSession>;
+    trusted: boolean;
+    unsupportedType?: string;
+  }>;
+  getHandoff(agentId: string): Promise<AdminTelegramProvisioningHandoff>;
+  submitBotToken(input: {
+    agentId: string;
+    botToken: string;
+    correlation: CorrelationMetadata;
+    flowKind?: TelegramProvisioningSession['flowKind'];
+  }): Promise<AdminTelegramProvisioningHandoff>;
 }
 
 export interface TrustedChannelIngressDispatcher {

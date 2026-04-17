@@ -1,9 +1,12 @@
 import {
+  adminTelegramProvisioningHandoffSchema,
   correlationMetadataSchema,
   errorResponseSchema,
   readinessResponseSchema,
+  submitTelegramBotTokenRequestSchema,
   webCreateAgentRequestSchema,
   type AdminAgentSummary,
+  type AdminTelegramProvisioningHandoff,
   type AnalyticsOverview,
 } from '@echidna-claw/contracts';
 import { http, HttpResponse } from 'msw';
@@ -13,6 +16,7 @@ import {
   createAdminAgentDetailFixture,
   createAdminAgentSummaryFixture,
   createAnalyticsOverviewFixture,
+  createTelegramProvisioningHandoffFixture,
 } from '../fixtures/records.js';
 
 export const mockApiBaseUrl = 'http://127.0.0.1:3001';
@@ -32,6 +36,7 @@ type MockState = {
   analyticsMode: AnalyticsMode;
   analyticsOverview: AnalyticsOverview;
   nextAgentId: number;
+  provisioningHandoffs: Record<string, AdminTelegramProvisioningHandoff>;
   readinessReady: boolean;
 };
 
@@ -60,6 +65,7 @@ function createDefaultState(): MockState {
     analyticsMode: 'ready',
     analyticsOverview: createAnalyticsOverviewFixture(),
     nextAgentId: 3,
+    provisioningHandoffs: {},
     readinessReady: true,
   };
 }
@@ -93,6 +99,82 @@ function createStructuredError(
 
 function updateAnalyticsTotals() {
   state.analyticsOverview = createAnalyticsOverviewFixture(state.analyticsOverview.events);
+}
+
+function deriveProvisioningHandoff(
+  agent: AdminAgentSummary,
+): AdminTelegramProvisioningHandoff {
+  const primaryChannel = agent.primaryChannel;
+  if (!primaryChannel) {
+    return createTelegramProvisioningHandoffFixture({
+      agentId: agent.agent.id,
+      channelId: agent.agent.primaryChannelId,
+      instructions: ['The primary Telegram channel is missing for this agent.'],
+      lastErrorCode: 'broken_registry_invariant',
+      lastErrorMessage: 'The primary Telegram channel is missing for this agent.',
+      provider: 'telegram',
+      state: 'failed',
+    });
+  }
+
+  if (primaryChannel.state === 'active') {
+    return createTelegramProvisioningHandoffFixture({
+      agentId: agent.agent.id,
+      botDisplayName: primaryChannel.botDisplayName ?? null,
+      botHandle: primaryChannel.externalHandle ?? null,
+      channelId: primaryChannel.id,
+      instructions: [
+        primaryChannel.externalHandle
+          ? `Provisioning is complete and @${primaryChannel.externalHandle} is active.`
+          : 'Provisioning is complete and the Telegram bot is active.',
+      ],
+      openTelegramUrl: primaryChannel.conversationUrl ?? null,
+      operatorActionUrl: primaryChannel.conversationUrl ?? null,
+      provider: 'telegram',
+      requiresBotToken: false,
+      state: 'completed',
+    });
+  }
+
+  if (primaryChannel.state === 'provisioning_failed') {
+    return createTelegramProvisioningHandoffFixture({
+      agentId: agent.agent.id,
+      botDisplayName: primaryChannel.botDisplayName ?? null,
+      botHandle: primaryChannel.externalHandle ?? null,
+      channelId: primaryChannel.id,
+      instructions: [
+        primaryChannel.lastProvisioningErrorMessage ?? 'The last provisioning attempt failed.',
+        'Retry the flow or paste a replacement token to continue.',
+      ],
+      lastErrorCode: primaryChannel.lastProvisioningErrorCode ?? 'telegram_bind_failed',
+      lastErrorMessage:
+        primaryChannel.lastProvisioningErrorMessage ??
+        'The last provisioning attempt failed.',
+      provider: 'telegram',
+      requiresBotToken: primaryChannel.credentialId == null,
+      state: 'failed',
+    });
+  }
+
+  return createTelegramProvisioningHandoffFixture({
+    agentId: agent.agent.id,
+    botDisplayName: primaryChannel.botDisplayName ?? null,
+    botHandle: primaryChannel.externalHandle ?? null,
+    channelId: primaryChannel.id,
+  });
+}
+
+function getProvisioningHandoff(agentId: string): AdminTelegramProvisioningHandoff | undefined {
+  return state.provisioningHandoffs[agentId] ?? (() => {
+    const agent = getAgentSummary(agentId);
+    return agent ? deriveProvisioningHandoff(agent) : undefined;
+  })();
+}
+
+function upsertProvisioningHandoff(handoff: AdminTelegramProvisioningHandoff) {
+  state.provisioningHandoffs[handoff.agentId] = adminTelegramProvisioningHandoffSchema.parse(
+    handoff,
+  );
 }
 
 function upsertAgentSummary(updated: AdminAgentSummary) {
@@ -162,6 +244,9 @@ export const mockWebApiState = {
   },
   setAnalyticsOverview(overview: AnalyticsOverview) {
     state.analyticsOverview = overview;
+  },
+  setProvisioningHandoff(handoff: AdminTelegramProvisioningHandoff) {
+    upsertProvisioningHandoff(handoff);
   },
   setReadiness(ready: boolean) {
     state.readinessReady = ready;
@@ -269,6 +354,12 @@ export async function resolveMockApiRequest(request: Request) {
 
     state.nextAgentId += 1;
     state.agents = [agent, ...state.agents];
+    upsertProvisioningHandoff(
+      createTelegramProvisioningHandoffFixture({
+        agentId: agent.agent.id,
+        channelId: agent.agent.primaryChannelId,
+      }),
+    );
 
     return jsonResponse(agent, { status: 201 });
   }
@@ -379,8 +470,143 @@ export async function resolveMockApiRequest(request: Request) {
     });
 
     upsertAgentSummary(updated);
+    const currentHandoff = getProvisioningHandoff(agent.agent.id);
+    upsertProvisioningHandoff(
+      createTelegramProvisioningHandoffFixture({
+        agentId: agent.agent.id,
+        attemptNumber: (currentHandoff?.attemptNumber ?? 0) + 1,
+        bootstrapCode:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? 'retry-bootstrap-code'
+            : null,
+        bootstrapExpiresAt:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? '2026-04-13T12:30:00.000Z'
+            : null,
+        botDisplayName: currentHandoff?.botDisplayName ?? null,
+        botHandle: currentHandoff?.botHandle ?? null,
+        channelId: agent.agent.primaryChannelId,
+        instructions:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? [
+                'Open the Telegram deep link from the intended operator account to send the one-time bootstrap code.',
+                'Only that bootstrap message can bind the trusted Telegram user and chat to this agent.',
+              ]
+            : [
+                'Create a Telegram bot in BotFather or choose an existing bot.',
+                'Paste the bot token here so the platform can verify it and configure the webhook.',
+              ],
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        openTelegramUrl:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? `https://t.me/${currentHandoff.botHandle}?start=retry-bootstrap-code`
+            : null,
+        operatorActionUrl:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? `https://t.me/${currentHandoff.botHandle}?start=retry-bootstrap-code`
+            : 'https://t.me/BotFather',
+        provider: 'telegram',
+        requiresBotToken: currentHandoff?.requiresBotToken ?? true,
+        state:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? 'awaiting_operator_binding'
+            : 'pending_operator_action',
+      }),
+    );
 
     return jsonResponse(updated);
+  }
+
+  const provisioningMatch = url.pathname.match(
+    /^\/api\/admin\/agents\/([^/]+)\/telegram-provisioning$/,
+  );
+
+  if (request.method === 'GET' && provisioningMatch) {
+    const handoff = getProvisioningHandoff(String(provisioningMatch[1]));
+
+    if (!handoff) {
+      return createStructuredError(404, 'not_found', 'Agent not found.', false);
+    }
+
+    return jsonResponse(handoff);
+  }
+
+  const submitTokenMatch = url.pathname.match(
+    /^\/api\/admin\/agents\/([^/]+)\/telegram-provisioning\/token$/,
+  );
+
+  if (request.method === 'POST' && submitTokenMatch) {
+    const agentId = String(submitTokenMatch[1]);
+    const agent = getAgentSummary(agentId);
+    if (!agent) {
+      return createStructuredError(404, 'not_found', 'Agent not found.', false);
+    }
+
+    const body = submitTelegramBotTokenRequestSchema.parse(await request.json());
+    if (body.botToken.toLowerCase().includes('bad')) {
+      upsertProvisioningHandoff(
+        createTelegramProvisioningHandoffFixture({
+          agentId,
+          channelId: agent.agent.primaryChannelId,
+          instructions: [
+            'Telegram rejected the provided bot token.',
+            'Paste a replacement token to continue.',
+          ],
+          lastErrorCode: 'telegram_token_invalid',
+          lastErrorMessage: 'Telegram rejected the provided bot token.',
+          provider: 'telegram',
+          state: 'failed',
+        }),
+      );
+      return createStructuredError(
+        400,
+        'validation_failed',
+        'Telegram rejected the provided bot token.',
+        false,
+      );
+    }
+
+    const handoff = createTelegramProvisioningHandoffFixture({
+      agentId,
+      botDisplayName: 'Ops Triage Bot',
+      botHandle: 'ops-triage-bot',
+      channelId: agent.agent.primaryChannelId,
+      instructions: [
+        'Open the Telegram deep link from the intended operator account to send the one-time bootstrap code.',
+        'Only that bootstrap message can bind the trusted Telegram user and chat to this agent.',
+      ],
+      openTelegramUrl: 'https://t.me/ops-triage-bot?start=bootstrap-code-123',
+      operatorActionUrl: 'https://t.me/ops-triage-bot?start=bootstrap-code-123',
+      provider: 'telegram',
+      requiresBotToken: false,
+      state: 'awaiting_operator_binding',
+      bootstrapCode: 'bootstrap-code-123',
+      bootstrapExpiresAt: '2026-04-13T12:30:00.000Z',
+    });
+    upsertProvisioningHandoff(handoff);
+    upsertAgentSummary(
+      createAdminAgentDetailFixture({
+        agent: {
+          ...agent.agent,
+          provisioningState: 'provisioning',
+          updatedAt: '2026-04-13T12:05:00.000Z',
+        },
+        primaryChannel: agent.primaryChannel
+          ? {
+              ...agent.primaryChannel,
+              agentId,
+              botDisplayName: 'Ops Triage Bot',
+              botUserId: 'bot-user-1',
+              credentialId: 'crd_fixture-telegram',
+              state: 'provisioning',
+              updatedAt: '2026-04-13T12:05:00.000Z',
+            }
+          : null,
+      }),
+    );
+
+    return jsonResponse(handoff);
   }
 
   if (request.method === 'GET' && url.pathname === '/api/admin/analytics/overview') {
@@ -501,6 +727,12 @@ export const handlers = [
 
     state.nextAgentId += 1;
     state.agents = [agent, ...state.agents];
+    upsertProvisioningHandoff(
+      createTelegramProvisioningHandoffFixture({
+        agentId: agent.agent.id,
+        channelId: agent.agent.primaryChannelId,
+      }),
+    );
 
     return HttpResponse.json(agent, { status: 201 });
   }),
@@ -567,6 +799,16 @@ export const handlers = [
     return HttpResponse.json(updated);
   }),
 
+  http.get(`${mockApiBaseUrl}/api/admin/agents/:agentId/telegram-provisioning`, ({ params }) => {
+    const handoff = getProvisioningHandoff(String(params.agentId));
+
+    if (!handoff) {
+      return createStructuredError(404, 'not_found', 'Agent not found.', false);
+    }
+
+    return HttpResponse.json(handoff);
+  }),
+
   http.post(`${mockApiBaseUrl}/api/admin/agents/:agentId/provisioning/retry`, async ({ params, request }) => {
     mutationBodySchema.parse(await request.json());
 
@@ -605,9 +847,129 @@ export const handlers = [
     });
 
     upsertAgentSummary(updated);
+    const currentHandoff = getProvisioningHandoff(agent.agent.id);
+    upsertProvisioningHandoff(
+      createTelegramProvisioningHandoffFixture({
+        agentId: agent.agent.id,
+        attemptNumber: (currentHandoff?.attemptNumber ?? 0) + 1,
+        bootstrapCode:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? 'retry-bootstrap-code'
+            : null,
+        bootstrapExpiresAt:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? '2026-04-13T12:30:00.000Z'
+            : null,
+        botDisplayName: currentHandoff?.botDisplayName ?? null,
+        botHandle: currentHandoff?.botHandle ?? null,
+        channelId: agent.agent.primaryChannelId,
+        instructions:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? [
+                'Open the Telegram deep link from the intended operator account to send the one-time bootstrap code.',
+                'Only that bootstrap message can bind the trusted Telegram user and chat to this agent.',
+              ]
+            : [
+                'Create a Telegram bot in BotFather or choose an existing bot.',
+                'Paste the bot token here so the platform can verify it and configure the webhook.',
+              ],
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        openTelegramUrl:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? `https://t.me/${currentHandoff.botHandle}?start=retry-bootstrap-code`
+            : null,
+        operatorActionUrl:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? `https://t.me/${currentHandoff.botHandle}?start=retry-bootstrap-code`
+            : 'https://t.me/BotFather',
+        provider: 'telegram',
+        requiresBotToken: currentHandoff?.requiresBotToken ?? true,
+        state:
+          currentHandoff && !currentHandoff.requiresBotToken && currentHandoff.botHandle
+            ? 'awaiting_operator_binding'
+            : 'pending_operator_action',
+      }),
+    );
 
     return HttpResponse.json(updated);
   }),
+
+  http.post(
+    `${mockApiBaseUrl}/api/admin/agents/:agentId/telegram-provisioning/token`,
+    async ({ params, request }) => {
+      const agentId = String(params.agentId);
+      const agent = getAgentSummary(agentId);
+      if (!agent) {
+        return createStructuredError(404, 'not_found', 'Agent not found.', false);
+      }
+
+      const body = submitTelegramBotTokenRequestSchema.parse(await request.json());
+      if (body.botToken.toLowerCase().includes('bad')) {
+        upsertProvisioningHandoff(
+          createTelegramProvisioningHandoffFixture({
+            agentId,
+            channelId: agent.agent.primaryChannelId,
+            instructions: [
+              'Telegram rejected the provided bot token.',
+              'Paste a replacement token to continue.',
+            ],
+            lastErrorCode: 'telegram_token_invalid',
+            lastErrorMessage: 'Telegram rejected the provided bot token.',
+            provider: 'telegram',
+            state: 'failed',
+          }),
+        );
+        return createStructuredError(
+          400,
+          'validation_failed',
+          'Telegram rejected the provided bot token.',
+          false,
+        );
+      }
+
+      const handoff = createTelegramProvisioningHandoffFixture({
+        agentId,
+        botDisplayName: 'Ops Triage Bot',
+        botHandle: 'ops-triage-bot',
+        channelId: agent.agent.primaryChannelId,
+        instructions: [
+          'Open the Telegram deep link from the intended operator account to send the one-time bootstrap code.',
+          'Only that bootstrap message can bind the trusted Telegram user and chat to this agent.',
+        ],
+        openTelegramUrl: 'https://t.me/ops-triage-bot?start=bootstrap-code-123',
+        operatorActionUrl: 'https://t.me/ops-triage-bot?start=bootstrap-code-123',
+        provider: 'telegram',
+        requiresBotToken: false,
+        state: 'awaiting_operator_binding',
+        bootstrapCode: 'bootstrap-code-123',
+        bootstrapExpiresAt: '2026-04-13T12:30:00.000Z',
+      });
+      upsertProvisioningHandoff(handoff);
+      upsertAgentSummary(
+        createAdminAgentDetailFixture({
+          agent: {
+            ...agent.agent,
+            provisioningState: 'provisioning',
+            updatedAt: '2026-04-13T12:05:00.000Z',
+          },
+          primaryChannel: agent.primaryChannel
+            ? {
+                ...agent.primaryChannel,
+                agentId,
+                botDisplayName: 'Ops Triage Bot',
+                botUserId: 'bot-user-1',
+                credentialId: 'crd_fixture-telegram',
+                state: 'provisioning',
+                updatedAt: '2026-04-13T12:05:00.000Z',
+              }
+            : null,
+        }),
+      );
+
+      return HttpResponse.json(handoff);
+    },
+  ),
 
   http.get(`${mockApiBaseUrl}/api/admin/analytics/overview`, () => {
     if (state.analyticsMode === 'not-implemented') {

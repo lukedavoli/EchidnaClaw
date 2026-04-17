@@ -31,6 +31,7 @@ import {
   schemaVersionSchema,
   taskEnvelopeIdSchema,
   taskIdSchema,
+  telegramProvisioningSessionIdSchema,
   timeZoneSchema,
   usageEventIdSchema,
   weekdaySchema,
@@ -248,6 +249,14 @@ export const channelStateSchema = z.enum([
   'retired',
 ]);
 export const outboundDeliveryStateSchema = z.enum(['queued', 'sent', 'delivered', 'failed']);
+export const telegramProvisioningFlowKindSchema = z.enum(['managed_bot', 'manual_existing_bot']);
+export const telegramProvisioningSessionStateSchema = z.enum([
+  'pending_operator_action',
+  'verifying_token',
+  'awaiting_operator_binding',
+  'completed',
+  'failed',
+]);
 
 function createRecordSchema<TRecordType extends string, TShape extends z.ZodRawShape>(
   recordType: TRecordType,
@@ -538,6 +547,36 @@ export const idempotencyRecordSchema = createRecordSchema(
   },
 );
 
+export const telegramProvisioningSessionSchema = createRecordSchema(
+  'telegram_provisioning_session',
+  telegramProvisioningSessionIdSchema,
+  {
+    agentId: agentIdSchema,
+    channelId: channelIdSchema,
+    provider: z.literal('telegram'),
+    attemptNumber: positiveIntegerSchema,
+    flowKind: telegramProvisioningFlowKindSchema,
+    state: telegramProvisioningSessionStateSchema,
+    credentialId: credentialIdSchema.nullable().default(null),
+    botUserId: nonEmptyStringSchema.nullable().default(null),
+    botDisplayName: nonEmptyStringSchema.nullable().default(null),
+    botHandle: nonEmptyStringSchema.nullable().default(null),
+    webhookUrl: nonEmptyStringSchema.nullable().default(null),
+    webhookConfiguredAt: isoDateTimeSchema.nullable().default(null),
+    bootstrapCode: nonEmptyStringSchema.nullable().default(null),
+    bootstrapExpiresAt: isoDateTimeSchema.nullable().default(null),
+    bindingInboundMessageId: inboundMessageIdSchema.nullable().default(null),
+    boundExternalChatId: nonEmptyStringSchema.nullable().default(null),
+    boundTrustedExternalUserId: nonEmptyStringSchema.nullable().default(null),
+    requestedAt: isoDateTimeSchema,
+    tokenVerifiedAt: isoDateTimeSchema.nullable().default(null),
+    completedAt: isoDateTimeSchema.nullable().default(null),
+    failedAt: isoDateTimeSchema.nullable().default(null),
+    lastErrorCode: nonEmptyStringSchema.nullable().default(null),
+    lastErrorMessage: z.string().trim().nullable().default(null),
+  },
+);
+
 const auditEventAttributeValueSchema = z.union([
   z.string(),
   z.number().finite(),
@@ -734,6 +773,10 @@ export type SandboxSessionState = z.infer<typeof sandboxSessionStateSchema>;
 export type ScheduleState = z.infer<typeof scheduleStateSchema>;
 export type ChannelState = z.infer<typeof channelStateSchema>;
 export type OutboundDeliveryState = z.infer<typeof outboundDeliveryStateSchema>;
+export type TelegramProvisioningFlowKind = z.infer<typeof telegramProvisioningFlowKindSchema>;
+export type TelegramProvisioningSessionState = z.infer<
+  typeof telegramProvisioningSessionStateSchema
+>;
 export type Agent = z.infer<typeof agentSchema>;
 export type Channel = z.infer<typeof channelSchema>;
 export type InboundMessage = z.infer<typeof inboundMessageSchema>;
@@ -748,6 +791,7 @@ export type Artifact = z.infer<typeof artifactSchema>;
 export type CredentialRef = z.infer<typeof credentialRefSchema>;
 export type CredentialSecret = z.infer<typeof credentialSecretSchema>;
 export type IdempotencyRecord = z.infer<typeof idempotencyRecordSchema>;
+export type TelegramProvisioningSession = z.infer<typeof telegramProvisioningSessionSchema>;
 export type AuditEvent = z.infer<typeof auditEventSchema>;
 export type UsageEvent = z.infer<typeof usageEventSchema>;
 export type RunJournal = z.infer<typeof runJournalSchema>;
@@ -774,6 +818,7 @@ export const platformRecordSchema = z.discriminatedUnion('recordType', [
   credentialRefSchema,
   credentialSecretSchema,
   idempotencyRecordSchema,
+  telegramProvisioningSessionSchema,
   auditEventSchema,
   usageEventSchema,
   runJournalSchema,

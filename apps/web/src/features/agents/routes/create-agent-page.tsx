@@ -29,13 +29,13 @@ export function CreateAgentPage() {
           setSubmitError(null);
 
           try {
-            await createAgentMutation.mutateAsync(values);
+            const created = await createAgentMutation.mutateAsync(values);
             notifications.show({
               color: 'teal',
-              message: `${values.name} is now visible in the roster with pending provisioning.`,
+              message: `${values.name} is ready for Telegram bot setup.`,
               title: 'Agent created',
             });
-            navigate('/agents');
+            navigate(`/agents/${created.agent.id}/provisioning`);
           } catch (error) {
             if (isApiClientError(error)) {
               setSubmitError(error);

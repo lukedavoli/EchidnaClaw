@@ -26,6 +26,7 @@ export * from './repositories/run-journal-repository.js';
 export * from './repositories/schedule-repository.js';
 export * from './repositories/store.js';
 export * from './repositories/task-repository.js';
+export * from './repositories/telegram-provisioning-session-repository.js';
 export * from './repositories/usage-event-repository.js';
 export * from './repositories/working-context-repository.js';
 export * from './testing/fake-clock.js';

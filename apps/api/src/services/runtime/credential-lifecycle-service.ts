@@ -129,6 +129,14 @@ export interface CredentialLifecycleService {
     agentId: string;
     credentialAliases: string[];
   }): Promise<SandboxCredentialBinding[]>;
+  upsertAgentCredentialFromPlaintext(input: {
+    agentId: string;
+    alias: string;
+    channelId?: string;
+    correlation: CorrelationMetadata;
+    displayName?: string;
+    plaintext: string;
+  }): Promise<CredentialRef>;
   revokeCredential(input: {
     agentId: string;
     correlation: CorrelationMetadata;
@@ -174,7 +182,78 @@ export function createCredentialLifecycleService(options: {
         updatedAt: now(),
       },
       storedChannel.etag,
+      );
+  }
+
+  async function upsertCredentialFromPlaintext(input: {
+    agentId: string;
+    alias: string;
+    channelId?: string;
+    correlation: CorrelationMetadata;
+    displayName?: string;
+    plaintext: string;
+  }): Promise<CredentialRef> {
+    const completedAt = now();
+    const service = resolveCredentialService(options.repositoryConfig, input.alias);
+    const existingCredential = await options.repositories.credentials.findByAlias(
+      input.agentId,
+      service.provider,
+      service.alias,
     );
+
+    const storedCredentialRef = existingCredential
+      ? await options.repositories.credentials
+          .rotateCredential({
+            credentialRef: {
+              ...existingCredential.value,
+              displayName: input.displayName ?? existingCredential.value.displayName ?? service.displayName,
+              status: 'active',
+              lastRotatedAt: completedAt,
+              revokedAt: null,
+              replacedByCredentialId: null,
+              updatedAt: completedAt,
+            },
+            expectedCredentialRefEtag: existingCredential.etag,
+            plaintext: input.plaintext,
+          })
+          .then((result) => result.credentialRef)
+      : await options.repositories.credentials
+          .createCredential({
+            credentialRef: {
+              id: createRuntimeIdentifier('crd') as CredentialRef['id'],
+              recordType: 'credential_ref',
+              schemaVersion: 1,
+              createdAt: completedAt,
+              updatedAt: completedAt,
+              correlation: input.correlation,
+              agentId: input.agentId,
+              provider: service.provider,
+              alias: service.alias,
+              displayName: input.displayName ?? service.displayName,
+              scope: 'agent',
+              status: 'active',
+              accessPolicyRef: service.accessPolicyRef,
+              encryptionKeyRef: 'platform://credential-envelope-key',
+              lastRotatedAt: completedAt,
+              lastUsedAt: null,
+              revokedAt: null,
+              replacedByCredentialId: null,
+              expiresAt: null,
+            },
+            plaintext: input.plaintext,
+          })
+          .then((result) => result.credentialRef);
+
+    if (input.channelId && service.alias === 'telegram-bot-token') {
+      await maybeAttachTelegramCredentialToChannel({
+        agentId: input.agentId,
+        channelId: input.channelId,
+        credentialId: storedCredentialRef.value.id,
+        existingCredentialId: existingCredential?.value.id,
+      });
+    }
+
+    return storedCredentialRef.value;
   }
 
   return {
@@ -532,74 +611,23 @@ export function createCredentialLifecycleService(options: {
         return { handled: true };
       }
 
-      const existingCredential = await options.repositories.credentials.findByAlias(
-        input.agentId,
-        pendingCapture.value.provider,
-        pendingCapture.value.alias,
-      );
-      let storedCredentialRef: { etag: string; value: CredentialRef };
-      if (existingCredential) {
-        storedCredentialRef = await options.repositories.credentials.rotateCredential({
-          credentialRef: {
-            ...existingCredential.value,
-            displayName: pendingCapture.value.displayName,
-            status: 'active',
-            lastRotatedAt: completedAt,
-            revokedAt: null,
-            replacedByCredentialId: null,
-            updatedAt: completedAt,
-          },
-          expectedCredentialRefEtag: existingCredential.etag,
-          plaintext: normalizedPlaintext,
-        }).then((result) => result.credentialRef);
-      } else {
-        storedCredentialRef = await options.repositories.credentials.createCredential({
-          credentialRef: {
-            id: createRuntimeIdentifier('crd') as CredentialRef['id'],
-            recordType: 'credential_ref',
-            schemaVersion: 1,
-            createdAt: completedAt,
-            updatedAt: completedAt,
-            correlation: {
-              ...input.correlation,
-              ...(pendingCapture.value.taskId ? { taskId: pendingCapture.value.taskId } : {}),
-            },
-            agentId: input.agentId,
-            provider: pendingCapture.value.provider,
-            alias: pendingCapture.value.alias,
-            displayName: pendingCapture.value.displayName,
-            scope: 'agent',
-            status: 'active',
-            accessPolicyRef: resolveCredentialServiceByProviderAlias(
-              options.repositoryConfig,
-              pendingCapture.value.provider,
-              pendingCapture.value.alias,
-            ).accessPolicyRef,
-            encryptionKeyRef: 'platform://credential-envelope-key',
-            lastRotatedAt: completedAt,
-            lastUsedAt: null,
-            revokedAt: null,
-            replacedByCredentialId: null,
-            expiresAt: null,
-          },
-          plaintext: normalizedPlaintext,
-        }).then((result) => result.credentialRef);
-      }
-
-      if (pendingCapture.value.alias === 'telegram-bot-token') {
-        await maybeAttachTelegramCredentialToChannel({
-          agentId: input.agentId,
-          channelId: input.channelId,
-          credentialId: storedCredentialRef.value.id,
-          existingCredentialId: existingCredential?.value.id,
-        });
-      }
+      const storedCredentialRef = await upsertCredentialFromPlaintext({
+        agentId: input.agentId,
+        alias: pendingCapture.value.alias,
+        channelId: input.channelId,
+        correlation: {
+          ...input.correlation,
+          ...(pendingCapture.value.taskId ? { taskId: pendingCapture.value.taskId } : {}),
+        },
+        displayName: pendingCapture.value.displayName,
+        plaintext: normalizedPlaintext,
+      });
 
       const updatedCapture: CredentialCapture = {
         ...pendingCapture.value,
         state: 'completed',
         receivedInboundMessageId: input.inboundMessageId,
-        credentialId: storedCredentialRef.value.id,
+        credentialId: storedCredentialRef.id,
         receivedAt: completedAt,
         completedAt,
         updatedAt: completedAt,
@@ -746,6 +774,10 @@ export function createCredentialLifecycleService(options: {
       }
 
       return bindings;
+    },
+
+    async upsertAgentCredentialFromPlaintext(input) {
+      return upsertCredentialFromPlaintext(input);
     },
 
     async revokeCredential(input) {

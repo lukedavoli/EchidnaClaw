@@ -3,6 +3,7 @@ import { Navigate, createBrowserRouter, createMemoryRouter } from 'react-router-
 
 import { AnalyticsPage } from '../features/analytics/routes/analytics-page.js';
 import { AgentsPage } from '../features/agents/routes/agents-page.js';
+import { AgentProvisioningPage } from '../features/agents/routes/agent-provisioning-page.js';
 import { CreateAgentPage } from '../features/agents/routes/create-agent-page.js';
 import { EmptyState } from '../features/shell/components/empty-state.js';
 import { AppRouteErrorBoundary, AppShellRoute } from './app-shell.js';
@@ -40,6 +41,10 @@ const routes: RouteObject[] = [
       {
         element: <CreateAgentPage />,
         path: 'agents/new',
+      },
+      {
+        element: <AgentProvisioningPage />,
+        path: 'agents/:agentId/provisioning',
       },
       {
         element: <AnalyticsPage />,
