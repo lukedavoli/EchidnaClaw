@@ -1,6 +1,10 @@
 import { errorResponseSchema, readinessResponseSchema } from '@echidna-claw/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
+import {
+  createAnalyticsAgentSummaryFixture,
+  createAnalyticsOverviewFixture,
+} from '../../testing/fixtures/records.js';
 import { createWebApiClient } from './client.js';
 
 describe('web api client', () => {
@@ -130,6 +134,65 @@ describe('web api client', () => {
           'Content-Type': 'application/json',
         }),
         body: expect.stringContaining('"botToken":"123456:telegram-secret-token"'),
+      }),
+    );
+  });
+
+  it('applies analytics window query parameters for overview and agent reads', async () => {
+    const fetchImplementation = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(createAnalyticsOverviewFixture(undefined, { window: '7d' })), {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            createAnalyticsAgentSummaryFixture({
+              agentId: 'agt_fixture-agent',
+              overrides: {
+                window: '24h',
+              },
+            }),
+          ),
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            status: 200,
+          },
+        ),
+      );
+
+    const client = createWebApiClient({
+      baseUrl: 'http://example.test',
+      fetchImplementation,
+    });
+
+    await expect(client.getAnalyticsOverview('7d')).resolves.toMatchObject({
+      window: '7d',
+    });
+    await expect(client.getAgentAnalytics('agt_fixture-agent', '24h')).resolves.toMatchObject({
+      agentId: 'agt_fixture-agent',
+      window: '24h',
+    });
+
+    expect(fetchImplementation).toHaveBeenNthCalledWith(
+      1,
+      'http://example.test/api/admin/analytics/overview?window=7d',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+    expect(fetchImplementation).toHaveBeenNthCalledWith(
+      2,
+      'http://example.test/api/admin/analytics/agents/agt_fixture-agent?window=24h',
+      expect.objectContaining({
+        method: 'GET',
       }),
     );
   });

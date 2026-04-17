@@ -1,4 +1,4 @@
-import type { Agent } from '@echidna-claw/contracts';
+import type { Agent, AnalyticsWindow } from '@echidna-claw/contracts';
 
 import { webApiClient } from '../../lib/api/client.js';
 
@@ -7,6 +7,12 @@ type CreateAgentInput = Pick<Agent, 'name'> & { timeZone?: Agent['timeZone'] | u
 export const agentsApi = {
   createAgent(input: CreateAgentInput) {
     return webApiClient.createAgent(input);
+  },
+  getAgent(agentId: string) {
+    return webApiClient.getAgent(agentId);
+  },
+  getAgentAnalytics(agentId: string, window?: AnalyticsWindow) {
+    return webApiClient.getAgentAnalytics(agentId, window);
   },
   getTelegramProvisioningHandoff(agentId: string) {
     return webApiClient.getTelegramProvisioningHandoff(agentId);

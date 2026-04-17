@@ -1,4 +1,5 @@
 import {
+  analyticsAgentSummarySchema,
   adminAgentDetailSchema,
   adminAgentSummarySchema,
   adminTelegramProvisioningHandoffSchema,
@@ -11,6 +12,8 @@ import {
   type AdminAgentSummary,
   type AdminTelegramProvisioningHandoff,
   type Agent,
+  type AnalyticsAgentSummary,
+  type AnalyticsWindow,
   type AnalyticsOverview,
   type Channel,
   type UsageEvent,
@@ -216,6 +219,7 @@ export function createAnalyticsOverviewFixture(
       },
     }),
   ],
+  overrides: Partial<AnalyticsOverview> = {},
 ): AnalyticsOverview {
   return analyticsOverviewSchema.parse({
     byModel: [
@@ -274,5 +278,91 @@ export function createAnalyticsOverviewFixture(
       eventCount: events.length,
     },
     window: '30d',
+    ...overrides,
+  });
+}
+
+export function createAnalyticsAgentSummaryFixture(
+  input: {
+    agentId?: string;
+    agentName?: string;
+    events?: UsageEvent[];
+    overrides?: Partial<AnalyticsAgentSummary>;
+    window?: AnalyticsWindow;
+  } = {},
+): AnalyticsAgentSummary {
+  const events =
+    input.events ??
+    [
+      createUsageEventFixture({
+        agentId: input.agentId ?? 'agt_fixture-agent',
+      }),
+      createUsageEventFixture({
+        agentId: input.agentId ?? 'agt_fixture-agent',
+        estimatedCostUsd: 0.08,
+        id: 'use_fixture-usage-agent-2',
+        source: 'head',
+        tokens: {
+          inputTokens: 1000,
+          outputTokens: 420,
+          reasoningTokens: null,
+          toolInputTokens: null,
+          toolOutputTokens: null,
+        },
+      }),
+    ];
+
+  return analyticsAgentSummarySchema.parse({
+    agentId: input.agentId ?? 'agt_fixture-agent',
+    agentName: input.agentName ?? 'Ops Triage Agent',
+    byModel: [
+      {
+        model: 'gpt-5.4-mini',
+        estimatedCostUsd: events.reduce((sum, event) => sum + event.estimatedCostUsd, 0),
+        eventCount: events.length,
+      },
+    ],
+    bySource: Array.from(
+      events.reduce(
+        (map, event) =>
+          map.set(event.source, {
+            source: event.source,
+            estimatedCostUsd: (map.get(event.source)?.estimatedCostUsd ?? 0) + event.estimatedCostUsd,
+            eventCount: (map.get(event.source)?.eventCount ?? 0) + 1,
+          }),
+        new Map<
+          UsageEvent['source'],
+          { source: UsageEvent['source']; estimatedCostUsd: number; eventCount: number }
+        >(),
+      ).values(),
+    ),
+    events,
+    grain: 'day',
+    series: [
+      {
+        bucketStart: baseTimestamp,
+        estimatedCostUsd: events.reduce((sum, event) => sum + event.estimatedCostUsd, 0),
+        inputTokens: events.reduce((sum, event) => sum + event.tokens.inputTokens, 0),
+        outputTokens: events.reduce((sum, event) => sum + event.tokens.outputTokens, 0),
+        eventCount: events.length,
+      },
+    ],
+    totals: {
+      estimatedCostUsd: events.reduce((sum, event) => sum + event.estimatedCostUsd, 0),
+      inputTokens: events.reduce((sum, event) => sum + event.tokens.inputTokens, 0),
+      outputTokens: events.reduce((sum, event) => sum + event.tokens.outputTokens, 0),
+      reasoningTokens: events.some((event) => event.tokens.reasoningTokens != null)
+        ? events.reduce((sum, event) => sum + (event.tokens.reasoningTokens ?? 0), 0)
+        : null,
+      toolInputTokens: events.some((event) => event.tokens.toolInputTokens != null)
+        ? events.reduce((sum, event) => sum + (event.tokens.toolInputTokens ?? 0), 0)
+        : null,
+      toolOutputTokens: events.some((event) => event.tokens.toolOutputTokens != null)
+        ? events.reduce((sum, event) => sum + (event.tokens.toolOutputTokens ?? 0), 0)
+        : null,
+      eventCount: events.length,
+    },
+    window: input.window ?? '30d',
+    ...(input.overrides ?? {}),
   });
 }

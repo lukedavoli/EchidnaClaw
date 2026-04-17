@@ -1,7 +1,9 @@
+import type { AnalyticsWindow } from '@echidna-claw/contracts';
+
 import { webApiClient } from '../../lib/api/client.js';
 
 export const analyticsApi = {
-  getAnalyticsOverview() {
-    return webApiClient.getAnalyticsOverview();
+  getAnalyticsOverview(window?: AnalyticsWindow) {
+    return webApiClient.getAnalyticsOverview(window);
   },
 };

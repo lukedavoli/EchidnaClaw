@@ -35,7 +35,7 @@ export function CreateAgentPage() {
               message: `${values.name} is ready for Telegram bot setup.`,
               title: 'Agent created',
             });
-            navigate(`/agents/${created.agent.id}/provisioning`);
+            navigate(`/agents/${created.agent.id}`);
           } catch (error) {
             if (isApiClientError(error)) {
               setSubmitError(error);

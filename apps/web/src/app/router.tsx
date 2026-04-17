@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router-dom';
 import { Navigate, createBrowserRouter, createMemoryRouter } from 'react-router-dom';
 
 import { AnalyticsPage } from '../features/analytics/routes/analytics-page.js';
+import { AgentDetailPage } from '../features/agents/routes/agent-detail-page.js';
 import { AgentsPage } from '../features/agents/routes/agents-page.js';
 import { AgentProvisioningPage } from '../features/agents/routes/agent-provisioning-page.js';
 import { CreateAgentPage } from '../features/agents/routes/create-agent-page.js';
@@ -13,7 +14,7 @@ function NotFoundPage() {
     <EmptyState
       actionLabel="Return to agents"
       actionTo="/agents"
-      description="The route you requested is not part of the Step 7 control plane shell yet."
+      description="The route you requested is not part of the current control-plane surface."
       title="Page not found"
     />
   );
@@ -41,6 +42,10 @@ const routes: RouteObject[] = [
       {
         element: <CreateAgentPage />,
         path: 'agents/new',
+      },
+      {
+        element: <AgentDetailPage />,
+        path: 'agents/:agentId',
       },
       {
         element: <AgentProvisioningPage />,

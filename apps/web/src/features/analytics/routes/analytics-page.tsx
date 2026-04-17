@@ -1,4 +1,6 @@
-import { Stack } from '@mantine/core';
+import type { AnalyticsWindow } from '@echidna-claw/contracts';
+import { Card, SimpleGrid, Stack } from '@mantine/core';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   isApiClientError,
@@ -8,15 +10,29 @@ import {
 import { ErrorPanel } from '../../shell/components/error-panel.js';
 import { PageHeader } from '../../shell/components/page-header.js';
 import { RefreshButton } from '../../shell/components/refresh-button.js';
+import { AnalyticsBreakdownTable } from '../components/analytics-breakdown-table.js';
 import { AnalyticsEmptyState } from '../components/analytics-empty-state.js';
+import { AnalyticsSeriesChart } from '../components/analytics-series-chart.js';
 import { AnalyticsSummaryCards } from '../components/analytics-summary-cards.js';
-import { UsageOverviewChart } from '../components/usage-overview-chart.js';
+import { AnalyticsTopAgentsTable } from '../components/analytics-top-agents-table.js';
+import { AnalyticsWindowControl } from '../components/analytics-window-control.js';
 import { useAnalyticsOverviewQuery } from '../hooks.js';
-import { toAnalyticsOverviewViewModel } from '../models.js';
+import { parseAnalyticsWindowValue, toAnalyticsOverviewViewModel } from '../models.js';
 
 export function AnalyticsPage() {
-  const analyticsQuery = useAnalyticsOverviewQuery();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedWindow = parseAnalyticsWindowValue(searchParams.get('window'));
+  const analyticsQuery = useAnalyticsOverviewQuery(requestedWindow);
   const overview = analyticsQuery.data ? toAnalyticsOverviewViewModel(analyticsQuery.data) : null;
+  const selectedWindow = overview?.window ?? requestedWindow ?? '30d';
+
+  function setWindow(window: AnalyticsWindow) {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set('window', window);
+      return next;
+    });
+  }
 
   return (
     <Stack gap="xl">
@@ -29,14 +45,16 @@ export function AnalyticsPage() {
             refreshing={analyticsQuery.isFetching && !analyticsQuery.isLoading}
           />
         }
-        description="Overview metrics and a first chart surface for usage analytics, with deliberate empty and unavailable states while the backend aggregates remain partial."
+        description="Global aggregate usage for the control plane, with backend-driven windows, series, grouped breakdowns, and per-agent drill-down links."
         title="Analytics"
       />
+
+      <AnalyticsWindowControl onChange={setWindow} value={selectedWindow} />
 
       {analyticsQuery.error && isReservedApiError(analyticsQuery.error) ? (
         <ErrorPanel
           actionLabel="Retry analytics"
-          description="The analytics route exists, but the backend overview remains reserved. The chart and KPI surfaces are in place and waiting for Step 18 data."
+          description="The analytics route exists, but the backend overview remains reserved in this environment."
           onAction={() => {
             void analyticsQuery.refetch();
           }}
@@ -80,7 +98,41 @@ export function AnalyticsPage() {
       {overview ? (
         <>
           <AnalyticsSummaryCards overview={overview} />
-          {overview.hasEvents ? <UsageOverviewChart overview={overview} /> : <AnalyticsEmptyState />}
+          {overview.hasEvents ? (
+            <>
+              <Card
+                className="shell-surface shell-surface--strong"
+                padding="lg"
+                radius="xl"
+                withBorder
+              >
+                <AnalyticsSeriesChart
+                  data={overview.seriesData}
+                  description="Primary time-series view of input and output token activity for the selected window."
+                  title="Usage over time"
+                />
+              </Card>
+
+              <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="md">
+                <AnalyticsBreakdownTable
+                  emptyMessage="No source usage is available for the selected window."
+                  rowLabel="Source"
+                  rows={overview.bySourceRows}
+                  title="Usage by source"
+                />
+                <AnalyticsBreakdownTable
+                  emptyMessage="No model usage is available for the selected window."
+                  rowLabel="Model"
+                  rows={overview.byModelRows}
+                  title="Usage by model"
+                />
+              </SimpleGrid>
+
+              <AnalyticsTopAgentsTable rows={overview.topAgentRows} />
+            </>
+          ) : (
+            <AnalyticsEmptyState />
+          )}
         </>
       ) : null}
     </Stack>

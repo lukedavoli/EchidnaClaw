@@ -1,9 +1,17 @@
-import type { AdminAgentSummary, Agent, ChannelState } from '@echidna-claw/contracts';
+import type { AdminAgentDetail, AdminAgentSummary, Agent, ChannelState } from '@echidna-claw/contracts';
 
+import { formatDateTime } from '../../lib/formatting/dates.js';
 import { humanizeEnumValue } from '../../lib/formatting/status.js';
 
 type BadgeTone = 'blue' | 'gray' | 'orange' | 'red' | 'teal';
 type ChannelViewState = ChannelState | 'missing';
+
+export type AgentDetailField = {
+  label: string;
+  monospace?: boolean;
+  tone?: 'default' | 'danger' | 'muted';
+  value: string;
+};
 
 export type AgentViewModel = {
   botIdentity: string | null;
@@ -28,6 +36,14 @@ export type AgentViewModel = {
   retryProvisioningReason: string;
   timeZone: string;
   updatedAt: string;
+};
+
+export type AgentDetailViewModel = AgentViewModel & {
+  archivedNotice: string | null;
+  channelIdentityFields: AgentDetailField[];
+  credentialStatusBadgeTone: BadgeTone;
+  credentialStatusLabel: string;
+  lifecycleTimelineFields: AgentDetailField[];
 };
 
 const lifecycleToneMap: Record<Agent['lifecycleState'], BadgeTone> = {
@@ -175,5 +191,74 @@ export function toAgentViewModel(agent: AdminAgentSummary): AgentViewModel {
     retryProvisioningReason: retryState.retryProvisioningReason,
     timeZone: agent.agent.timeZone,
     updatedAt: agent.agent.updatedAt,
+  };
+}
+
+function createField(
+  label: string,
+  value: string | null | undefined,
+  options: {
+    fallback?: string;
+    monospace?: boolean;
+    tone?: AgentDetailField['tone'];
+  } = {},
+): AgentDetailField {
+  return {
+    label,
+    ...(options.monospace ? { monospace: true } : {}),
+    ...(options.tone ? { tone: options.tone } : {}),
+    value: value && value.trim().length > 0 ? value : options.fallback ?? 'Not available yet',
+  };
+}
+
+export function toAgentDetailViewModel(agent: AdminAgentDetail): AgentDetailViewModel {
+  const summary = toAgentViewModel(agent);
+  const primaryChannel = agent.primaryChannel;
+
+  return {
+    ...summary,
+    archivedNotice: summary.isArchived
+      ? 'This agent is archived. Provisioning history and analytics remain visible, but active-use actions stay disabled until you restore it.'
+      : null,
+    channelIdentityFields: [
+      createField('Provider', primaryChannel?.provider ? humanizeEnumValue(primaryChannel.provider) : null, {
+        fallback: 'Primary channel missing',
+      }),
+      createField(
+        'Bot handle',
+        primaryChannel?.externalHandle ? `@${primaryChannel.externalHandle.replace(/^@+/, '')}` : null,
+      ),
+      createField('Bot display name', primaryChannel?.botDisplayName),
+      createField('Bot user ID', primaryChannel?.botUserId, { monospace: true }),
+      createField('Bound chat ID', primaryChannel?.externalChatId, { monospace: true }),
+      createField(
+        'Credential binding',
+        primaryChannel?.credentialId
+          ? `Bound credential ${primaryChannel.credentialId}`
+          : 'No Telegram bot credential is currently bound.',
+        {
+          monospace: primaryChannel?.credentialId != null,
+          tone: primaryChannel?.credentialId ? 'default' : 'danger',
+        },
+      ),
+    ],
+    credentialStatusBadgeTone: primaryChannel?.credentialId ? 'teal' : 'orange',
+    credentialStatusLabel: primaryChannel?.credentialId ? 'Credential bound' : 'Credential missing',
+    lifecycleTimelineFields: [
+      createField('Requested', formatDateTime(primaryChannel?.provisioningRequestedAt ?? null)),
+      createField('Started', formatDateTime(primaryChannel?.provisioningStartedAt ?? null)),
+      createField('Bound', formatDateTime(primaryChannel?.boundAt ?? null)),
+      createField('Last failure', formatDateTime(primaryChannel?.lastProvisioningFailedAt ?? null), {
+        tone: primaryChannel?.lastProvisioningFailedAt ? 'danger' : 'muted',
+      }),
+      createField('Last recovery request', formatDateTime(primaryChannel?.lastRecoveryRequestedAt ?? null)),
+      createField(
+        'Recovery attempts',
+        String(primaryChannel?.recoveryAttemptCount ?? 0),
+        {
+          tone: (primaryChannel?.recoveryAttemptCount ?? 0) > 0 ? 'default' : 'muted',
+        },
+      ),
+    ],
   };
 }
