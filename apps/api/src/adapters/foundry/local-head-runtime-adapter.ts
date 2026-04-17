@@ -47,6 +47,7 @@ export function createLocalHeadRuntimeAdapter(): HeadRuntimeAdapter {
         effectSummary: createEmptyEffectSummary(),
         providerConversationId: input.conversationCursor ?? `stub-conversation:${input.headTurnId}`,
         providerRunId: `stub-run:${input.headTurnId}`,
+        usage: null,
       };
     },
   };

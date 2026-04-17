@@ -271,12 +271,89 @@ export const webRevokeCredentialRequestSchema = z
   })
   .strict();
 
+export const analyticsWindowSchema = z.enum(['1h', '24h', '7d', '30d', '90d', 'all']);
+export const analyticsTimeGrainSchema = z.enum(['minute', 'hour', 'day', 'week']);
+
+export const analyticsTotalsSchema = z
+  .object({
+    estimatedCostUsd: z.number().finite().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    reasoningTokens: z.number().int().nonnegative().nullable(),
+    toolInputTokens: z.number().int().nonnegative().nullable(),
+    toolOutputTokens: z.number().int().nonnegative().nullable(),
+    eventCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const analyticsModelSliceSchema = z
+  .object({
+    model: nonEmptyStringSchema,
+    estimatedCostUsd: z.number().finite().nonnegative(),
+    eventCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const analyticsSourceSliceSchema = z
+  .object({
+    source: nonEmptyStringSchema,
+    estimatedCostUsd: z.number().finite().nonnegative(),
+    eventCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const analyticsAgentSliceSchema = z
+  .object({
+    agentId: agentIdSchema,
+    agentName: nonEmptyStringSchema,
+    estimatedCostUsd: z.number().finite().nonnegative(),
+    eventCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const analyticsSeriesPointSchema = z
+  .object({
+    bucketStart: isoDateTimeSchema,
+    estimatedCostUsd: z.number().finite().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    eventCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const analyticsOverviewSchema = z
   .object({
-    totalEstimatedCostUsd: z.number().finite().nonnegative(),
-    totalInputTokens: z.number().int().nonnegative(),
-    totalOutputTokens: z.number().int().nonnegative(),
+    window: analyticsWindowSchema,
+    grain: analyticsTimeGrainSchema,
+    totals: analyticsTotalsSchema,
+    byModel: z.array(analyticsModelSliceSchema),
+    bySource: z.array(analyticsSourceSliceSchema),
+    topAgents: z.array(analyticsAgentSliceSchema),
+    series: z.array(analyticsSeriesPointSchema),
     events: z.array(usageEventSchema),
+  })
+  .strict();
+
+export const analyticsAgentSummarySchema = z
+  .object({
+    agentId: agentIdSchema,
+    agentName: nonEmptyStringSchema,
+    window: analyticsWindowSchema,
+    grain: analyticsTimeGrainSchema,
+    totals: analyticsTotalsSchema,
+    byModel: z.array(analyticsModelSliceSchema),
+    bySource: z.array(analyticsSourceSliceSchema),
+    series: z.array(analyticsSeriesPointSchema),
+    events: z.array(usageEventSchema),
+  })
+  .strict();
+
+export const analyticsSeriesResponseSchema = z
+  .object({
+    agentId: agentIdSchema.optional(),
+    window: analyticsWindowSchema,
+    grain: analyticsTimeGrainSchema,
+    series: z.array(analyticsSeriesPointSchema),
   })
   .strict();
 
@@ -342,7 +419,13 @@ export type RecordAgentProvisioningFailureRequest = z.infer<
   typeof recordAgentProvisioningFailureRequestSchema
 >;
 export type WebRevokeCredentialRequest = z.infer<typeof webRevokeCredentialRequestSchema>;
+export type AnalyticsWindow = z.infer<typeof analyticsWindowSchema>;
+export type AnalyticsTimeGrain = z.infer<typeof analyticsTimeGrainSchema>;
+export type AnalyticsTotals = z.infer<typeof analyticsTotalsSchema>;
 export type AnalyticsOverview = z.infer<typeof analyticsOverviewSchema>;
+export type AnalyticsAgentSummary = z.infer<typeof analyticsAgentSummarySchema>;
+export type AnalyticsSeriesPoint = z.infer<typeof analyticsSeriesPointSchema>;
+export type AnalyticsSeriesResponse = z.infer<typeof analyticsSeriesResponseSchema>;
 export type SendChannelMessageRequest = z.infer<typeof sendChannelMessageRequestSchema>;
 export type TrustedChannelIngressDispatchRequest = z.infer<
   typeof trustedChannelIngressDispatchRequestSchema
@@ -386,5 +469,13 @@ export interface WebControlPlaneService {
   getApprovalState(approvalId: z.infer<typeof approvalIdSchema>): Promise<z.infer<typeof approvalStateSchema>>;
   listCredentials(agentId: z.infer<typeof agentIdSchema>): Promise<AdminCredentialSummary[]>;
   revokeCredential(input: WebRevokeCredentialRequest): Promise<AdminCredentialSummary>;
-  getAnalyticsOverview(): Promise<AnalyticsOverview>;
+  getAnalyticsOverview(window?: AnalyticsWindow): Promise<AnalyticsOverview>;
+  getAgentAnalytics(
+    agentId: z.infer<typeof agentIdSchema>,
+    window?: AnalyticsWindow,
+  ): Promise<AnalyticsAgentSummary>;
+  getAnalyticsSeries(input?: {
+    agentId?: z.infer<typeof agentIdSchema>;
+    window?: AnalyticsWindow;
+  }): Promise<AnalyticsSeriesResponse>;
 }

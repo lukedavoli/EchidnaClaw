@@ -46,6 +46,7 @@ export function createLocalWorkingContextSummarizerAdapter(): WorkingContextSumm
         latestHandsStatus: input.latestHandsStatus,
         openQuestions: deriveOpenQuestions(input),
         summary: summaryParts.join(' '),
+        usage: null,
       };
     },
   };

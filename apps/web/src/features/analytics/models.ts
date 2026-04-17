@@ -40,8 +40,8 @@ export function toAnalyticsOverviewViewModel(
     ),
     eventCountLabel: formatInteger(overview.events.length),
     hasEvents: overview.events.length > 0,
-    totalEstimatedCostLabel: formatCurrency(overview.totalEstimatedCostUsd),
-    totalInputTokensLabel: formatInteger(overview.totalInputTokens),
-    totalOutputTokensLabel: formatInteger(overview.totalOutputTokens),
+    totalEstimatedCostLabel: formatCurrency(overview.totals.estimatedCostUsd),
+    totalInputTokensLabel: formatInteger(overview.totals.inputTokens),
+    totalOutputTokensLabel: formatInteger(overview.totals.outputTokens),
   };
 }

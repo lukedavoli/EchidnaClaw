@@ -13,6 +13,7 @@ import type {
   DeferredHeadDirective,
   FoundryHeadTurnResult,
   HeadRuntimeAdapter,
+  NormalizedProviderUsage,
   PreparedHeadTool,
   PreparedHeadTurnInput,
 } from './types.js';
@@ -94,6 +95,70 @@ function toCompletionKind(input: {
   return input.hadFunctionCalls ? 'tool_only' : 'no_op';
 }
 
+function extractUsage(
+  response: Response,
+  analyticsGroup: string,
+): NormalizedProviderUsage | null {
+  const usage = (response as Response & {
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      input_token_details?: {
+        cached_tokens?: number;
+      };
+      output_token_details?: {
+        reasoning_tokens?: number;
+      };
+    };
+  }).usage;
+
+  if (!usage) {
+    return null;
+  }
+
+  return {
+    analyticsGroup,
+    provider: 'azure-foundry',
+    providerOperationId: response.id ?? null,
+    tokens: {
+      inputTokens: usage.input_tokens ?? 0,
+      outputTokens: usage.output_tokens ?? 0,
+      reasoningTokens: usage.output_token_details?.reasoning_tokens ?? null,
+      toolInputTokens: usage.input_token_details?.cached_tokens ?? null,
+      toolOutputTokens: null,
+    },
+  };
+}
+
+function mergeUsage(
+  current: NormalizedProviderUsage | null,
+  next: NormalizedProviderUsage | null,
+): NormalizedProviderUsage | null {
+  if (!current) {
+    return next;
+  }
+
+  if (!next) {
+    return current;
+  }
+
+  return {
+    analyticsGroup: current.analyticsGroup ?? next.analyticsGroup,
+    provider: current.provider,
+    providerOperationId: next.providerOperationId ?? current.providerOperationId,
+    tokens: {
+      inputTokens: current.tokens.inputTokens + next.tokens.inputTokens,
+      outputTokens: current.tokens.outputTokens + next.tokens.outputTokens,
+      reasoningTokens:
+        (current.tokens.reasoningTokens ?? 0) + (next.tokens.reasoningTokens ?? 0),
+      toolInputTokens:
+        (current.tokens.toolInputTokens ?? 0) + (next.tokens.toolInputTokens ?? 0),
+      toolOutputTokens:
+        (current.tokens.toolOutputTokens ?? 0) + (next.tokens.toolOutputTokens ?? 0),
+    },
+  };
+}
+
 async function resolveFunctionCalls(options: {
   defaultDeploymentName: string;
   openAIClient: OpenAIClient;
@@ -105,12 +170,14 @@ async function resolveFunctionCalls(options: {
   effectSummary: HeadEffectSummary;
   finalResponse: Response;
   hadFunctionCalls: boolean;
+  usage: NormalizedProviderUsage | null;
 }> {
   const deferredDirectives: DeferredHeadDirective[] = [];
   const effectSummary = createEmptyEffectSummary();
   const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool]));
   let hadFunctionCalls = false;
   let response = options.response;
+  let usage = extractUsage(response, 'head-turn');
 
   for (let round = 0; round < MAX_FUNCTION_TOOL_ROUNDS; round += 1) {
     if (!hasFunctionCall(response)) {
@@ -119,6 +186,7 @@ async function resolveFunctionCalls(options: {
         effectSummary,
         finalResponse: response,
         hadFunctionCalls,
+        usage,
       };
     }
 
@@ -205,6 +273,7 @@ async function resolveFunctionCalls(options: {
     };
 
     response = await options.openAIClient.responses.create(continuationRequest);
+    usage = mergeUsage(usage, extractUsage(response, 'head-turn'));
   }
 
   throw new DependencyUnavailableError(
@@ -267,6 +336,7 @@ export function createLiveHeadRuntimeAdapter(options: {
         effectSummary,
         finalResponse,
         hadFunctionCalls,
+        usage,
       } = await resolveFunctionCalls({
         defaultDeploymentName: options.defaultDeploymentName,
         openAIClient,
@@ -292,6 +362,7 @@ export function createLiveHeadRuntimeAdapter(options: {
         effectSummary,
         providerConversationId: finalResponse.conversation?.id ?? conversation,
         providerRunId: finalResponse.id,
+        usage,
       };
     },
   };

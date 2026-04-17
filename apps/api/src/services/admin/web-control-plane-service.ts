@@ -9,8 +9,10 @@ import type { RepositoryBundle } from '../../adapters/repositories/index.js';
 import { NotFoundError } from '../../http/errors.js';
 import { createAgentRegistryService } from './agent-registry-service.js';
 import type { CredentialLifecycleService } from '../runtime/credential-lifecycle-service.js';
+import type { AnalyticsQueryService } from './analytics-query-service.js';
 
 export function createWebControlPlaneService(options: {
+  analyticsQueryService: AnalyticsQueryService;
   credentialLifecycleService: CredentialLifecycleService;
   logger: Logger;
   repositories: RepositoryBundle;
@@ -27,9 +29,17 @@ export function createWebControlPlaneService(options: {
       options.logger.info('web_control_plane.create_agent', { agentName: input.name });
       return agentRegistry.createAgent(input);
     },
-    async getAnalyticsOverview() {
-      options.logger.info('web_control_plane.get_analytics_overview');
-      return options.repositories.analytics.getOverview();
+    async getAnalyticsOverview(window) {
+      options.logger.info('web_control_plane.get_analytics_overview', { window });
+      return options.analyticsQueryService.getOverview(window);
+    },
+    async getAgentAnalytics(agentId, window) {
+      options.logger.info('web_control_plane.get_agent_analytics', { agentId, window });
+      return options.analyticsQueryService.getAgentAnalytics(agentId, window);
+    },
+    async getAnalyticsSeries(input) {
+      options.logger.info('web_control_plane.get_analytics_series', input ?? {});
+      return options.analyticsQueryService.getSeries(input);
     },
     async getAgent(agentId) {
       options.logger.info('web_control_plane.get_agent', { agentId });

@@ -50,8 +50,10 @@ import { createHeadToolCatalog } from './head-tool-catalog.js';
 import type { ScheduleMutationService } from './schedule-mutation-service.js';
 import type { TaskQueueService } from './task-queue-service.js';
 import type { ApprovalLifecycleService } from './approval-lifecycle-service.js';
+import type { AuditHistoryService } from './audit-history-service.js';
 import type { ConversationMemoryService } from './conversation-memory-service.js';
 import type { CredentialLifecycleService } from './credential-lifecycle-service.js';
+import type { UsageAccountingService } from './usage-accounting-service.js';
 import type {
   WorkingContextSummaryService,
   WorkingContextSummarySnapshot,
@@ -386,7 +388,113 @@ function buildExistingSummarySnapshot(
     openQuestions: workingContext.openQuestions,
     summary: workingContext.summary,
     summaryUpdatedAt: workingContext.summaryUpdatedAt ?? completedAt,
+    usage: null,
   };
+}
+
+async function appendHeadTurnAudit(input: {
+  action: string;
+  agentId: string;
+  auditHistoryService: AuditHistoryService;
+  correlation: HeadTurn['correlation'];
+  occurredAt: string;
+  outcome: 'attempted' | 'succeeded' | 'failed' | 'cancelled' | 'denied' | 'expired';
+  summary: string;
+  turn: HeadTurn;
+}): Promise<void> {
+  await input.auditHistoryService.append({
+    action: input.action,
+    agentId: input.agentId,
+    attributes: {
+      completionKind: input.turn.completionKind,
+      dueAt: input.turn.dueAt,
+      headTurnId: input.turn.id,
+      providerConversationId: input.turn.providerConversationId,
+      providerRunId: input.turn.providerRunId,
+      state: input.turn.state,
+      taskId: input.turn.taskId,
+      triggerKind: input.turn.triggerKind,
+    },
+    category: 'run_outcome',
+    correlation: {
+      ...input.correlation,
+      headTurnId: input.turn.id,
+      taskId: input.turn.taskId ?? undefined,
+    },
+    occurredAt: input.occurredAt,
+    outcome: input.outcome,
+    summary: input.summary,
+  });
+}
+
+async function appendHeadTurnAuditSafe(input: {
+  action: string;
+  agentId: string;
+  auditHistoryService?: AuditHistoryService;
+  correlation: HeadTurn['correlation'];
+  logger: Logger;
+  occurredAt: string;
+  outcome: 'attempted' | 'succeeded' | 'failed' | 'cancelled' | 'denied' | 'expired';
+  summary: string;
+  turn: HeadTurn;
+}): Promise<void> {
+  if (!input.auditHistoryService) {
+    input.logger.warn('head_runtime.audit_history_unavailable', {
+      action: input.action,
+      agentId: input.agentId,
+      headTurnId: input.turn.id,
+    });
+    return;
+  }
+
+  try {
+    await appendHeadTurnAudit({
+      action: input.action,
+      agentId: input.agentId,
+      auditHistoryService: input.auditHistoryService,
+      correlation: input.correlation,
+      occurredAt: input.occurredAt,
+      outcome: input.outcome,
+      summary: input.summary,
+      turn: input.turn,
+    });
+  } catch (error) {
+    input.logger.warn('head_runtime.audit_append_failed', {
+      action: input.action,
+      agentId: input.agentId,
+      headTurnId: input.turn.id,
+      message: error instanceof Error ? error.message : 'Unknown audit append failure.',
+    });
+  }
+}
+
+async function appendUsageSafe(input: {
+  usageAccountingService?: UsageAccountingService;
+  logger: Logger;
+  append: () => Promise<unknown>;
+  agentId: string;
+  operation: string;
+  source: 'head';
+}): Promise<void> {
+  if (!input.usageAccountingService) {
+    input.logger.warn('head_runtime.usage_accounting_unavailable', {
+      agentId: input.agentId,
+      operation: input.operation,
+      source: input.source,
+    });
+    return;
+  }
+
+  try {
+    await input.append();
+  } catch (error) {
+    input.logger.warn('head_runtime.usage_append_failed', {
+      agentId: input.agentId,
+      message: error instanceof Error ? error.message : 'Unknown usage append failure.',
+      operation: input.operation,
+      source: input.source,
+    });
+  }
 }
 
 async function getRequiredAgent(
@@ -732,6 +840,7 @@ async function reconcileDueTaskBeforeCommit(options: {
 
 export function createHeadRuntimeService(options: {
   approvalLifecycleService: ApprovalLifecycleService;
+  auditHistoryService: AuditHistoryService;
   config: ApiRuntimeConfig;
   conversationMemoryService: ConversationMemoryService;
   credentialLifecycleService: CredentialLifecycleService;
@@ -741,6 +850,7 @@ export function createHeadRuntimeService(options: {
   repositoryConfig: RepositoryConfig;
   scheduleMutationService: ScheduleMutationService;
   taskQueueService: TaskQueueService;
+  usageAccountingService: UsageAccountingService;
   workingContextSummaryService: WorkingContextSummaryService;
 }): HeadService {
   return {
@@ -784,6 +894,18 @@ export function createHeadRuntimeService(options: {
             workingContext: initialWorkingContext.value,
           }),
         );
+
+        await appendHeadTurnAuditSafe({
+          action: 'head.turn.rejected',
+          agentId: storedAgent.value.id,
+          auditHistoryService: options.auditHistoryService,
+          correlation: rejectedTurn.value.correlation,
+          logger: options.logger,
+          occurredAt: rejectedTurn.value.updatedAt,
+          outcome: 'denied',
+          summary: rejection.message,
+          turn: rejectedTurn.value,
+        });
 
         return headTurnExecutionResultSchema.parse({
           headTurn: rejectedTurn.value,
@@ -1038,6 +1160,18 @@ export function createHeadRuntimeService(options: {
                 : {}),
             });
 
+            await appendHeadTurnAuditSafe({
+              action: 'head.turn.superseded',
+              agentId: storedAgent.value.id,
+              auditHistoryService: options.auditHistoryService,
+              correlation: supersededResult.headTurn.value.correlation,
+              logger: options.logger,
+              occurredAt: supersededAt,
+              outcome: 'cancelled',
+              summary: `Head turn '${supersededResult.headTurn.value.id}' was superseded by newer input.`,
+              turn: supersededResult.headTurn.value,
+            });
+
             return headTurnExecutionResultSchema.parse({
               headTurn: supersededResult.headTurn.value,
               status: 'superseded',
@@ -1078,6 +1212,42 @@ export function createHeadRuntimeService(options: {
               workingContext: latestWorkingContext.value,
             }),
             workingContextEtag: latestWorkingContext.etag,
+          });
+
+          if (runtimeResult.usage) {
+            const usage = runtimeResult.usage;
+            await appendUsageSafe({
+              usageAccountingService: options.usageAccountingService,
+              logger: options.logger,
+              append: () =>
+                options.usageAccountingService.appendUsage({
+                  agentId: storedAgent.value.id,
+                  analyticsGroup: usage.analyticsGroup,
+                  correlation: failedResult.headTurn.value.correlation,
+                  model: storedAgent.value.headModel,
+                  occurredAt: failedAt,
+                  operation: 'head_turn',
+                  provider: usage.provider,
+                  providerOperationId: usage.providerOperationId,
+                  source: 'head',
+                  tokens: usage.tokens,
+                }),
+              agentId: storedAgent.value.id,
+              operation: 'head_turn',
+              source: 'head',
+            });
+          }
+
+          await appendHeadTurnAuditSafe({
+            action: 'head.turn.failed',
+            agentId: storedAgent.value.id,
+            auditHistoryService: options.auditHistoryService,
+            correlation: failedResult.headTurn.value.correlation,
+            logger: options.logger,
+            occurredAt: failedAt,
+            outcome: 'failed',
+            summary: 'Foundry execution returned a failed completion.',
+            turn: failedResult.headTurn.value,
           });
 
           return headTurnExecutionResultSchema.parse({
@@ -1147,6 +1317,66 @@ export function createHeadRuntimeService(options: {
           workingContextEtag: reconciledWorkingContext.etag,
         });
 
+        if (runtimeResult.usage) {
+          const usage = runtimeResult.usage;
+          await appendUsageSafe({
+            usageAccountingService: options.usageAccountingService,
+            logger: options.logger,
+            append: () =>
+              options.usageAccountingService.appendUsage({
+                agentId: storedAgent.value.id,
+                analyticsGroup: usage.analyticsGroup,
+                correlation: finalizedTurn.headTurn.value.correlation,
+                model: storedAgent.value.headModel,
+                occurredAt: completedAt,
+                operation: 'head_turn',
+                provider: usage.provider,
+                providerOperationId: usage.providerOperationId,
+                source: 'head',
+                tokens: usage.tokens,
+              }),
+            agentId: storedAgent.value.id,
+            operation: 'head_turn',
+            source: 'head',
+          });
+        }
+
+        if (summarySnapshot.usage) {
+          const usage = summarySnapshot.usage;
+          await appendUsageSafe({
+            usageAccountingService: options.usageAccountingService,
+            logger: options.logger,
+            append: () =>
+              options.usageAccountingService.appendUsage({
+                agentId: storedAgent.value.id,
+                analyticsGroup: usage.analyticsGroup,
+                correlation: finalizedTurn.headTurn.value.correlation,
+                model: storedAgent.value.headModel,
+                occurredAt: completedAt,
+                operation: 'working_context_summary',
+                provider: usage.provider,
+                providerOperationId: usage.providerOperationId,
+                source: 'head',
+                tokens: usage.tokens,
+              }),
+            agentId: storedAgent.value.id,
+            operation: 'working_context_summary',
+            source: 'head',
+          });
+        }
+
+        await appendHeadTurnAuditSafe({
+          action: 'head.turn.completed',
+          agentId: storedAgent.value.id,
+          auditHistoryService: options.auditHistoryService,
+          correlation: finalizedTurn.headTurn.value.correlation,
+          logger: options.logger,
+          occurredAt: completedAt,
+          outcome: 'succeeded',
+          summary: `Head turn '${finalizedTurn.headTurn.value.id}' completed with '${runtimeResult.completionKind}'.`,
+          turn: finalizedTurn.headTurn.value,
+        });
+
         return headTurnExecutionResultSchema.parse({
           headTurn: finalizedTurn.headTurn.value,
           status: mapCompletionKindToStatus(runtimeResult.completionKind),
@@ -1209,6 +1439,19 @@ export function createHeadRuntimeService(options: {
           workingContextEtag: latestWorkingContext.etag,
         });
 
+        await appendHeadTurnAuditSafe({
+          action: 'head.turn.failed',
+          agentId: storedAgent.value.id,
+          auditHistoryService: options.auditHistoryService,
+          correlation: failedResult.headTurn.value.correlation,
+          logger: options.logger,
+          occurredAt: failedAt,
+          outcome: 'failed',
+          summary:
+            error instanceof Error ? error.message : 'Foundry execution failed unexpectedly.',
+          turn: failedResult.headTurn.value,
+        });
+
         return headTurnExecutionResultSchema.parse({
           headTurn: failedResult.headTurn.value,
           status: 'failed',
@@ -1269,6 +1512,18 @@ export function createHeadRuntimeService(options: {
               workingContextEtag: storedWorkingContext.etag,
             }
           : {}),
+      });
+
+      await appendHeadTurnAuditSafe({
+        action: 'head.turn.superseded',
+        agentId: storedHeadTurn.value.agentId,
+        auditHistoryService: options.auditHistoryService,
+        correlation: storedHeadTurn.value.correlation,
+        logger: options.logger,
+        occurredAt: supersededAt,
+        outcome: 'cancelled',
+        summary: `Head turn '${storedHeadTurn.value.id}' was manually superseded.`,
+        turn: supersededResult.headTurn.value,
       });
 
       return supersededResult.headTurn.value;

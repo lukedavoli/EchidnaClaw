@@ -3,6 +3,7 @@ import { DefaultAzureCredential } from '@azure/identity';
 import type { ResponseCreateParamsNonStreaming } from 'openai/resources/responses/responses';
 
 import type {
+  NormalizedProviderUsage,
   WorkingContextSummarizerAdapter,
   WorkingContextSummaryInput,
   WorkingContextSummaryResult,
@@ -21,6 +22,7 @@ function createFallbackSummary(input: WorkingContextSummaryInput): WorkingContex
       input.previousSummary ||
       latestUserText ||
       'No operational summary is currently available.',
+    usage: null,
   };
 }
 
@@ -42,6 +44,37 @@ function buildInputText(input: WorkingContextSummaryInput): string {
     null,
     2,
   );
+}
+
+function extractUsage(
+  response: {
+    id?: string;
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      output_token_details?: {
+        reasoning_tokens?: number;
+      };
+    };
+  },
+  analyticsGroup: string,
+): NormalizedProviderUsage | null {
+  if (!response.usage) {
+    return null;
+  }
+
+  return {
+    analyticsGroup,
+    provider: 'azure-foundry',
+    providerOperationId: response.id ?? null,
+    tokens: {
+      inputTokens: response.usage.input_tokens ?? 0,
+      outputTokens: response.usage.output_tokens ?? 0,
+      reasoningTokens: response.usage.output_token_details?.reasoning_tokens ?? null,
+      toolInputTokens: null,
+      toolOutputTokens: null,
+    },
+  };
 }
 
 export function createLiveWorkingContextSummarizerAdapter(options: {
@@ -84,10 +117,14 @@ export function createLiveWorkingContextSummarizerAdapter(options: {
       };
 
       const response = await openAIClient.responses.create(request);
+      const usage = extractUsage(response, 'working-context-summary');
       const outputText = response.output_text.trim();
 
       if (!outputText) {
-        return createFallbackSummary(input);
+        return {
+          ...createFallbackSummary(input),
+          usage,
+        };
       }
 
       try {
@@ -106,9 +143,13 @@ export function createLiveWorkingContextSummarizerAdapter(options: {
             typeof parsed.summary === 'string' && parsed.summary.trim().length > 0
               ? parsed.summary
               : createFallbackSummary(input).summary,
+          usage,
         };
       } catch {
-        return createFallbackSummary(input);
+        return {
+          ...createFallbackSummary(input),
+          usage,
+        };
       }
     },
   };

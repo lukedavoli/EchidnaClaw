@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import {
   AGENT_STATE_CONTAINER_NAME,
+  AUDIT_HISTORY_CONTAINER_NAME,
   USAGE_EVENTS_CONTAINER_NAME,
   type ContainerName,
 } from '../documents/container-names.js';
@@ -125,6 +126,7 @@ export interface CosmosRecordStoreOptions {
   client: CosmosClient;
   databaseName: string;
   agentStateContainerName?: string;
+  auditHistoryContainerName?: string;
   usageEventsContainerName?: string;
 }
 
@@ -137,6 +139,9 @@ export class CosmosRecordStore implements PersistedRecordStore {
     this.containers = {
       [AGENT_STATE_CONTAINER_NAME]: database.container(
         options.agentStateContainerName ?? AGENT_STATE_CONTAINER_NAME,
+      ),
+      [AUDIT_HISTORY_CONTAINER_NAME]: database.container(
+        options.auditHistoryContainerName ?? AUDIT_HISTORY_CONTAINER_NAME,
       ),
       [USAGE_EVENTS_CONTAINER_NAME]: database.container(
         options.usageEventsContainerName ?? USAGE_EVENTS_CONTAINER_NAME,
@@ -182,7 +187,7 @@ export class CosmosRecordStore implements PersistedRecordStore {
         };
 
         if (!response.resource) {
-          return null;
+          continue;
         }
 
         return toStoredRecord(
@@ -341,3 +346,4 @@ export class CosmosRecordStore implements PersistedRecordStore {
     }
   }
 }
+

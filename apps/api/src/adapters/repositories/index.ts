@@ -1,9 +1,9 @@
-import type { AnalyticsOverview } from '@echidna-claw/contracts';
 import {
   createAzureRepositorySuite,
   createInMemoryRepositorySuite,
   type AgentRegistryRepository,
   type AgentRepository,
+  type AuditEventRepository,
   type ApprovalRepository,
   type ChannelRepository,
   type CredentialCaptureRepository,
@@ -14,18 +14,16 @@ import {
   type RunJournalRepository,
   type ScheduleRepository,
   type TaskRepository,
+  type UsageEventRepository,
   type WorkingContextRepository,
 } from '@echidna-claw/persistence';
 
 import type { ApiRuntimeConfig } from '../../config/api-runtime-config.js';
-import { NotImplementedYetError } from '../../http/errors.js';
 
 export interface RepositoryBundle {
   agents: AgentRepository;
   agentRegistry: AgentRegistryRepository;
-  analytics: {
-    getOverview(): Promise<AnalyticsOverview>;
-  };
+  auditEvents: AuditEventRepository;
   approvals: ApprovalRepository;
   channels: ChannelRepository;
   credentialCaptures: CredentialCaptureRepository;
@@ -36,6 +34,7 @@ export interface RepositoryBundle {
   runJournals: RunJournalRepository;
   schedules: ScheduleRepository;
   tasks: TaskRepository;
+  usageEvents: UsageEventRepository;
   workingContexts: WorkingContextRepository;
 }
 
@@ -78,11 +77,7 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
     repositories: {
       agents: suite.agents,
       agentRegistry: suite.agentRegistry,
-      analytics: {
-        async getOverview(): Promise<AnalyticsOverview> {
-          throw new NotImplementedYetError('Analytics aggregation is reserved for Step 18.');
-        },
-      },
+      auditEvents: suite.auditEvents,
       approvals: suite.approvals,
       channels: suite.channels,
       credentialCaptures: suite.credentialCaptures,
@@ -93,6 +88,7 @@ export function createRepositoryBundle(config: ApiRuntimeConfig): {
       runJournals: suite.runJournals,
       schedules: suite.schedules,
       tasks: suite.tasks,
+      usageEvents: suite.usageEvents,
       workingContexts: suite.workingContexts,
     },
   };

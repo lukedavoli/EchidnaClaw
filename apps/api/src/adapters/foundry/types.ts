@@ -1,6 +1,19 @@
 import type { CorrelationMetadata, HeadEffectSummary, HeadTurnCompletionKind } from '@echidna-claw/contracts';
 import type { HeadPromptAssembly } from '@echidna-claw/prompting';
 
+export type NormalizedProviderUsage = {
+  analyticsGroup: string | null;
+  provider: 'azure-foundry';
+  providerOperationId: string | null;
+  tokens: {
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number | null;
+    toolInputTokens: number | null;
+    toolOutputTokens: number | null;
+  };
+};
+
 export type MemoryScopeBinding = {
   provider: 'telegram';
   scopeKey: string;
@@ -91,6 +104,7 @@ export interface FoundryHeadTurnResult {
   effectSummary: HeadEffectSummary;
   providerConversationId: string | null;
   providerRunId: string | null;
+  usage: NormalizedProviderUsage | null;
 }
 
 export interface CancelFoundryTurnInput {
@@ -126,6 +140,7 @@ export interface WorkingContextSummaryResult {
   latestHandsStatus: string | null;
   openQuestions: string[];
   summary: string;
+  usage: NormalizedProviderUsage | null;
 }
 
 export interface WorkingContextSummarizerAdapter {

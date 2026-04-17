@@ -1,6 +1,7 @@
 import {
   type Agent,
   type Approval,
+  type AuditEvent,
   type Artifact,
   type Channel,
   type CorrelationMetadata,
@@ -536,14 +537,44 @@ export function createUsageEvent(overrides: Partial<UsageEvent> = {}): UsageEven
     correlation: createCorrelationMetadata(),
     agentId: 'agt_persistence',
     source: 'hands',
+    provider: 'azure-foundry',
     model: 'gpt-5.4-mini',
     operation: 'run-task',
     occurredAt: FIXTURE_TIMESTAMP,
+    providerOperationId: 'provop_persistence',
+    analyticsGroup: 'hands-run',
     tokens: {
       inputTokens: 120,
       outputTokens: 45,
+      reasoningTokens: null,
+      toolInputTokens: null,
+      toolOutputTokens: null,
     },
     estimatedCostUsd: 0.0123,
+    pricingStatus: 'estimated',
+    ...overrides,
+  };
+}
+
+export function createAuditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
+  return {
+    id: 'aud_persistence',
+    recordType: 'audit_event',
+    schemaVersion: 1,
+    createdAt: FIXTURE_TIMESTAMP,
+    updatedAt: FIXTURE_TIMESTAMP,
+    correlation: createCorrelationMetadata(),
+    agentId: 'agt_persistence',
+    occurredAt: FIXTURE_TIMESTAMP,
+    retentionUntil: '2026-05-12T00:00:00.000Z',
+    category: 'run_outcome',
+    action: 'hands.completed',
+    outcome: 'succeeded',
+    summary: 'Hands completed the queued work.',
+    attributes: {
+      taskId: 'tsk_persistence',
+    },
+    artifactIds: [],
     ...overrides,
   };
 }

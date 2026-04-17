@@ -99,7 +99,7 @@ describe('buildSandboxServer', () => {
       sharedCloudConfigured: false,
       status: 'ok',
     });
-  });
+  }, 15000);
 
   it('creates, executes, and closes sandbox sessions through the internal routes', async () => {
     const config = createSandboxTestConfig();

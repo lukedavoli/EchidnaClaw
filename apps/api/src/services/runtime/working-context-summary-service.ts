@@ -18,6 +18,7 @@ export interface WorkingContextSummarySnapshot {
   openQuestions: string[];
   summary: string;
   summaryUpdatedAt: string;
+  usage: WorkingContextSummaryResult['usage'];
 }
 
 export interface WorkingContextSummaryService {
@@ -59,6 +60,7 @@ function createFallbackSummary(input: {
         : [],
     summary: summary || input.previousSummary || 'No operational summary is currently available.',
     summaryUpdatedAt: input.completedAt,
+    usage: null,
   };
 }
 
@@ -73,6 +75,7 @@ function normalizeSummaryResult(
     openQuestions: result.openQuestions,
     summary: result.summary.trim() || previousSummary || 'No operational summary is currently available.',
     summaryUpdatedAt: completedAt,
+    usage: result.usage,
   };
 }
 
@@ -149,6 +152,7 @@ export function createWorkingContextSummaryService(options: {
         openQuestions: input.workingContext.openQuestions,
         summary: input.workingContext.summary || input.eventSummary,
         summaryUpdatedAt: input.refreshedAt,
+        usage: null,
       };
     },
   };

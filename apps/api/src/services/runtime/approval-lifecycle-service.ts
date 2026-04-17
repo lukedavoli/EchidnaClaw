@@ -28,6 +28,7 @@ import { ConflictError, NotFoundError } from '../../http/errors.js';
 import type { OutboundMessagingService } from '../channel/contracts.js';
 import type { HandsService } from '@echidna-claw/contracts';
 import type { TaskQueueService } from './task-queue-service.js';
+import type { AuditHistoryService } from './audit-history-service.js';
 
 function now(): string {
   return new Date().toISOString();
@@ -116,6 +117,7 @@ export interface ApprovalLifecycleService {
 }
 
 export function createApprovalLifecycleService(options: {
+  auditHistoryService: AuditHistoryService;
   handsRuntimeService: HandsService;
   logger: Logger;
   outboundMessagingService: OutboundMessagingService;
@@ -328,12 +330,35 @@ export function createApprovalLifecycleService(options: {
         requestMessageId: promptMessage.id,
         updatedAt: promptMessage.updatedAt,
       };
-      return (
-        await options.repositories.approvals.replace(
-          updatedApprovalWithMessage,
-          mutation.approval.etag,
-        )
-      ).value;
+      const replacedApproval = await options.repositories.approvals.replace(
+        updatedApprovalWithMessage,
+        mutation.approval.etag,
+      );
+
+      await options.auditHistoryService.append({
+        action: 'approval.requested',
+        agentId: input.agentId,
+        attributes: {
+          actionFingerprint,
+          blocking,
+          category: input.category,
+          expiresAt,
+          requestMessageId: promptMessage.id,
+          stepUpRequired: policy.stepUpRequired,
+          taskId: input.taskId,
+        },
+        category: 'approval',
+        correlation: {
+          ...input.correlation,
+          approvalId: replacedApproval.value.id,
+          taskId: input.taskId,
+        },
+        occurredAt: promptMessage.updatedAt,
+        outcome: 'attempted',
+        summary: `Requested approval: ${input.summary}`,
+      });
+
+      return replacedApproval.value;
     },
 
     async recordDecision(input: ApprovalDecisionChannelActionResponse): Promise<Approval> {
@@ -505,6 +530,34 @@ export function createApprovalLifecycleService(options: {
           });
         }
       }
+
+      await options.auditHistoryService.append({
+        action: `approval.${nextState}`,
+        agentId: mutation.approval.value.agentId,
+        attributes: {
+          approvalId: mutation.approval.value.id,
+          category: mutation.approval.value.category,
+          decisionSource: mutation.approval.value.decisionSource,
+          reason: decisionReason,
+          taskId: mutation.task.value.id,
+        },
+        category: 'approval',
+        correlation: {
+          ...input.correlation,
+          approvalId: mutation.approval.value.id,
+          taskId: mutation.task.value.id,
+        },
+        occurredAt: decidedAt,
+        outcome:
+          nextState === 'approved'
+            ? 'succeeded'
+            : nextState === 'rejected'
+              ? 'denied'
+              : nextState === 'expired'
+                ? 'expired'
+                : 'cancelled',
+        summary: decisionReason,
+      });
 
       return mutation.approval.value;
     },

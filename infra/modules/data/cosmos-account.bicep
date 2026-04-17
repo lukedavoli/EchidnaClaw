@@ -3,14 +3,15 @@ param location string
 param tags object = {}
 param databaseName string
 param agentStateContainerName string = 'agent-state'
+param auditHistoryContainerName string = 'audit-history'
 param usageEventsContainerName string = 'usage-events'
+param auditHistoryDefaultTtlSeconds int = 2592000
 param dataContributorPrincipalIds array = []
 param enableServerless bool = true
 
 var cosmosDataContributorRoleDefinitionId = '${databaseAccount.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
 var operationalContainerPartitionKeyPath = '/partitionKey'
 var agentStateIndexedPaths = [
-  '/id/?'
   '/partitionKey/?'
   '/recordType/?'
   '/agentId/?'
@@ -39,13 +40,26 @@ var agentStateIndexedPaths = [
   '/retentionUntil/?'
 ]
 var usageEventsIndexedPaths = [
-  '/id/?'
   '/partitionKey/?'
   '/recordType/?'
   '/agentId/?'
   '/source/?'
   '/model/?'
   '/occurredAt/?'
+]
+var auditHistoryIndexedPaths = [
+  '/partitionKey/?'
+  '/recordType/?'
+  '/agentId/?'
+  '/occurredAt/?'
+  '/retentionUntil/?'
+  '/category/?'
+  '/outcome/?'
+  '/correlation/taskId/?'
+  '/correlation/headTurnId/?'
+  '/correlation/handsRunId/?'
+  '/correlation/sandboxSessionId/?'
+  '/correlation/approvalId/?'
 ]
 
 resource databaseAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' = {
@@ -327,6 +341,72 @@ resource usageEventsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabase
   }
 }
 
+resource auditHistoryContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2023-04-15' = {
+  name: auditHistoryContainerName
+  parent: sqlDatabase
+  properties: {
+    resource: {
+      id: auditHistoryContainerName
+      defaultTtl: auditHistoryDefaultTtlSeconds
+      partitionKey: {
+        paths: [
+          operationalContainerPartitionKeyPath
+        ]
+        kind: 'Hash'
+        version: 2
+      }
+      indexingPolicy: {
+        automatic: true
+        indexingMode: 'consistent'
+        includedPaths: [
+          for path in auditHistoryIndexedPaths: {
+            path: path
+          }
+        ]
+        excludedPaths: [
+          {
+            path: '/*'
+          }
+        ]
+        compositeIndexes: [
+          [
+            {
+              path: '/recordType'
+              order: 'ascending'
+            }
+            {
+              path: '/agentId'
+              order: 'ascending'
+            }
+            {
+              path: '/occurredAt'
+              order: 'descending'
+            }
+          ]
+          [
+            {
+              path: '/recordType'
+              order: 'ascending'
+            }
+            {
+              path: '/category'
+              order: 'ascending'
+            }
+            {
+              path: '/outcome'
+              order: 'ascending'
+            }
+            {
+              path: '/occurredAt'
+              order: 'descending'
+            }
+          ]
+        ]
+      }
+    }
+  }
+}
+
 resource sqlRoleAssignments 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2023-04-15' = [
   for principalId in dataContributorPrincipalIds: {
     name: guid(databaseAccount.id, databaseName, principalId, 'cosmos-data-contributor')
@@ -348,4 +428,5 @@ output accountEndpoint string = databaseAccount.properties.documentEndpoint
 output databaseName string = databaseName
 output databaseResourceId string = sqlDatabase.id
 output agentStateContainerName string = agentStateContainer.name
+output auditHistoryContainerName string = auditHistoryContainer.name
 output usageEventsContainerName string = usageEventsContainer.name

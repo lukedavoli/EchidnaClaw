@@ -19,6 +19,10 @@ import {
   DefaultAgentRegistryRepository,
   type AgentRegistryRepository,
 } from './agent-registry-repository.js';
+import {
+  DefaultAuditEventRepository,
+  type AuditEventRepository,
+} from './audit-event-repository.js';
 import { DefaultApprovalRepository, type ApprovalRepository } from './approval-repository.js';
 import { DefaultArtifactRepository, type ArtifactRepository } from './artifact-repository.js';
 import { DefaultChannelRepository, type ChannelRepository } from './channel-repository.js';
@@ -42,6 +46,7 @@ import { DefaultWorkingContextRepository, type WorkingContextRepository } from '
 export interface RepositorySuite {
   agents: AgentRepository;
   agentRegistry: AgentRegistryRepository;
+  auditEvents: AuditEventRepository;
   approvals: ApprovalRepository;
   artifacts: ArtifactRepository;
   channels: ChannelRepository;
@@ -73,6 +78,7 @@ export interface AzureRepositorySuiteOptions {
   clock?: Clock;
   keyEncryptionKeyId: string;
   agentStateContainerName?: string;
+  auditHistoryContainerName?: string;
   usageEventsContainerName?: string;
 }
 
@@ -84,6 +90,7 @@ export function createRepositorySuite(dependencies: RepositorySuiteDependencies)
   return {
     agents,
     agentRegistry: new DefaultAgentRegistryRepository(dependencies.recordStore, agents, channels),
+    auditEvents: new DefaultAuditEventRepository(dependencies.recordStore),
     approvals: new DefaultApprovalRepository(dependencies.recordStore),
     artifacts: new DefaultArtifactRepository(
       dependencies.recordStore,
@@ -117,6 +124,9 @@ export function createAzureRepositorySuite(options: AzureRepositorySuiteOptions)
     databaseName: options.cosmosDatabaseName,
     ...(options.agentStateContainerName
       ? { agentStateContainerName: options.agentStateContainerName }
+      : {}),
+    ...(options.auditHistoryContainerName
+      ? { auditHistoryContainerName: options.auditHistoryContainerName }
       : {}),
     ...(options.usageEventsContainerName
       ? { usageEventsContainerName: options.usageEventsContainerName }

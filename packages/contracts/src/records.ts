@@ -4,6 +4,7 @@ import { correlationMetadataSchema } from './correlation.js';
 import {
   agentIdSchema,
   approvalIdSchema,
+  auditEventIdSchema,
   artifactIdSchema,
   channelIdSchema,
   credentialCaptureIdSchema,
@@ -146,13 +147,33 @@ const tokenUsageSchema = z
   .object({
     inputTokens: nonNegativeNumberSchema,
     outputTokens: nonNegativeNumberSchema,
+    reasoningTokens: nonNegativeNumberSchema.nullable().default(null),
+    toolInputTokens: nonNegativeNumberSchema.nullable().default(null),
+    toolOutputTokens: nonNegativeNumberSchema.nullable().default(null),
   })
   .strict();
 
 const usageSourceSchema = z.enum(['head', 'hands', 'sandbox', 'scheduler', 'web_control_plane']);
+export const usageProviderSchema = z.enum(['azure-foundry']);
+export const usagePricingStatusSchema = z.enum(['estimated', 'partial', 'unpriced']);
 export const journalStatusSchema = z.enum(['open', 'closed', 'failed']);
 export const credentialStatusSchema = z.enum(['active', 'revoked']);
 const idempotencyStatusSchema = z.enum(['reserved', 'completed', 'expired']);
+export const auditEventCategorySchema = z.enum([
+  'tool_call',
+  'sandbox_command',
+  'approval',
+  'due_task',
+  'run_outcome',
+]);
+export const auditEventOutcomeSchema = z.enum([
+  'attempted',
+  'succeeded',
+  'failed',
+  'cancelled',
+  'denied',
+  'expired',
+]);
 export const approvalCategorySchema = z.enum([
   'external_write',
   'send',
@@ -517,14 +538,37 @@ export const idempotencyRecordSchema = createRecordSchema(
   },
 );
 
+const auditEventAttributeValueSchema = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+]);
+
+export const auditEventSchema = createRecordSchema('audit_event', auditEventIdSchema, {
+  agentId: agentIdSchema,
+  occurredAt: isoDateTimeSchema,
+  retentionUntil: isoDateTimeSchema,
+  category: auditEventCategorySchema,
+  action: nonEmptyStringSchema,
+  outcome: auditEventOutcomeSchema,
+  summary: nonEmptyStringSchema,
+  attributes: z.record(z.string(), auditEventAttributeValueSchema).default({}),
+  artifactIds: z.array(artifactIdSchema).default([]),
+});
+
 export const usageEventSchema = createRecordSchema('usage_event', usageEventIdSchema, {
   agentId: agentIdSchema,
   source: usageSourceSchema,
+  provider: usageProviderSchema.default('azure-foundry'),
   model: modelIdSchema,
   operation: nonEmptyStringSchema,
   occurredAt: isoDateTimeSchema,
+  providerOperationId: nonEmptyStringSchema.nullable().default(null),
+  analyticsGroup: nonEmptyStringSchema.nullable().default(null),
   tokens: tokenUsageSchema,
   estimatedCostUsd: nonNegativeNumberSchema,
+  pricingStatus: usagePricingStatusSchema.default('estimated'),
 });
 
 export const runJournalSchema = createRecordSchema('run_journal', runJournalIdSchema, {
@@ -667,9 +711,13 @@ export type TaskLaunchStatus = z.infer<typeof taskLaunchStatusSchema>;
 export type TaskLaunchState = z.infer<typeof taskLaunchStateSchema>;
 export type TokenUsage = z.infer<typeof tokenUsageSchema>;
 export type UsageSource = z.infer<typeof usageSourceSchema>;
+export type UsageProvider = z.infer<typeof usageProviderSchema>;
+export type UsagePricingStatus = z.infer<typeof usagePricingStatusSchema>;
 export type JournalStatus = z.infer<typeof journalStatusSchema>;
 export type CredentialStatus = z.infer<typeof credentialStatusSchema>;
 export type IdempotencyStatus = z.infer<typeof idempotencyStatusSchema>;
+export type AuditEventCategory = z.infer<typeof auditEventCategorySchema>;
+export type AuditEventOutcome = z.infer<typeof auditEventOutcomeSchema>;
 export type ApprovalCategory = z.infer<typeof approvalCategorySchema>;
 export type ApprovalDecisionSource = z.infer<typeof approvalDecisionSourceSchema>;
 export type CredentialCaptureState = z.infer<typeof credentialCaptureStateSchema>;
@@ -700,6 +748,7 @@ export type Artifact = z.infer<typeof artifactSchema>;
 export type CredentialRef = z.infer<typeof credentialRefSchema>;
 export type CredentialSecret = z.infer<typeof credentialSecretSchema>;
 export type IdempotencyRecord = z.infer<typeof idempotencyRecordSchema>;
+export type AuditEvent = z.infer<typeof auditEventSchema>;
 export type UsageEvent = z.infer<typeof usageEventSchema>;
 export type RunJournal = z.infer<typeof runJournalSchema>;
 export type RunJournalEntry = z.infer<typeof runJournalEntrySchema>;
@@ -725,6 +774,7 @@ export const platformRecordSchema = z.discriminatedUnion('recordType', [
   credentialRefSchema,
   credentialSecretSchema,
   idempotencyRecordSchema,
+  auditEventSchema,
   usageEventSchema,
   runJournalSchema,
   runJournalEntrySchema,

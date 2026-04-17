@@ -149,16 +149,23 @@ export function createUsageEventFixture(overrides: Partial<UsageEvent> = {}): Us
     correlation: createFixtureCorrelation('usage'),
     createdAt: baseTimestamp,
     estimatedCostUsd: 0.31,
+    pricingStatus: 'estimated',
     id: 'use_fixture-usage',
+    analyticsGroup: 'web-control-plane',
     model: 'gpt-5.4-mini',
     occurredAt: baseTimestamp,
     operation: 'head_turn',
+    provider: 'azure-foundry',
+    providerOperationId: 'resp_fixture-usage',
     recordType: 'usage_event',
     schemaVersion: 1,
     source: 'web_control_plane',
     tokens: {
       inputTokens: 2400,
       outputTokens: 900,
+      reasoningTokens: null,
+      toolInputTokens: null,
+      toolOutputTokens: null,
     },
     updatedAt: baseTimestamp,
     ...overrides,
@@ -175,14 +182,69 @@ export function createAnalyticsOverviewFixture(
       tokens: {
         inputTokens: 1200,
         outputTokens: 640,
+        reasoningTokens: null,
+        toolInputTokens: null,
+        toolOutputTokens: null,
       },
     }),
   ],
 ): AnalyticsOverview {
   return analyticsOverviewSchema.parse({
+    byModel: [
+      {
+        model: 'gpt-5.4-mini',
+        estimatedCostUsd: events.reduce((sum, event) => sum + event.estimatedCostUsd, 0),
+        eventCount: events.length,
+      },
+    ],
+    bySource: Array.from(
+      events.reduce(
+        (map, event) =>
+          map.set(event.source, {
+            source: event.source,
+            estimatedCostUsd: (map.get(event.source)?.estimatedCostUsd ?? 0) + event.estimatedCostUsd,
+            eventCount: (map.get(event.source)?.eventCount ?? 0) + 1,
+          }),
+        new Map<
+          UsageEvent['source'],
+          { source: UsageEvent['source']; estimatedCostUsd: number; eventCount: number }
+        >(),
+      ).values(),
+    ),
     events,
-    totalEstimatedCostUsd: events.reduce((sum, event) => sum + event.estimatedCostUsd, 0),
-    totalInputTokens: events.reduce((sum, event) => sum + event.tokens.inputTokens, 0),
-    totalOutputTokens: events.reduce((sum, event) => sum + event.tokens.outputTokens, 0),
+    grain: 'day',
+    series: [
+      {
+        bucketStart: baseTimestamp,
+        estimatedCostUsd: events.reduce((sum, event) => sum + event.estimatedCostUsd, 0),
+        inputTokens: events.reduce((sum, event) => sum + event.tokens.inputTokens, 0),
+        outputTokens: events.reduce((sum, event) => sum + event.tokens.outputTokens, 0),
+        eventCount: events.length,
+      },
+    ],
+    topAgents: [
+      {
+        agentId: 'agt_fixture-agent',
+        agentName: 'Ops Triage Agent',
+        estimatedCostUsd: events.reduce((sum, event) => sum + event.estimatedCostUsd, 0),
+        eventCount: events.length,
+      },
+    ],
+    totals: {
+      estimatedCostUsd: events.reduce((sum, event) => sum + event.estimatedCostUsd, 0),
+      inputTokens: events.reduce((sum, event) => sum + event.tokens.inputTokens, 0),
+      outputTokens: events.reduce((sum, event) => sum + event.tokens.outputTokens, 0),
+      reasoningTokens: events.some((event) => event.tokens.reasoningTokens != null)
+        ? events.reduce((sum, event) => sum + (event.tokens.reasoningTokens ?? 0), 0)
+        : null,
+      toolInputTokens: events.some((event) => event.tokens.toolInputTokens != null)
+        ? events.reduce((sum, event) => sum + (event.tokens.toolInputTokens ?? 0), 0)
+        : null,
+      toolOutputTokens: events.some((event) => event.tokens.toolOutputTokens != null)
+        ? events.reduce((sum, event) => sum + (event.tokens.toolOutputTokens ?? 0), 0)
+        : null,
+      eventCount: events.length,
+    },
+    window: '30d',
   });
 }

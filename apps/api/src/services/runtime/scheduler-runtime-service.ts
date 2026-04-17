@@ -25,6 +25,7 @@ import {
 
 import type { RepositoryBundle } from '../../adapters/repositories/index.js';
 import { ConflictError } from '../../http/errors.js';
+import type { AuditHistoryService } from './audit-history-service.js';
 
 const SCHEDULE_OCCURRENCE_SCOPE = 'scheduler:schedule-occurrence';
 const DUE_TASK_HEAD_START_SCOPE = 'scheduler:due-task-head-start';
@@ -151,7 +152,48 @@ async function reserveDueTaskStart(input: {
   return input.repositories.idempotency.complete(nextRecord, input.existingIdempotency.etag);
 }
 
+async function appendSchedulerAuditSafe(input: {
+  action: string;
+  agentId: string;
+  attributes: Record<string, unknown>;
+  auditHistoryService?: AuditHistoryService;
+  category: 'due_task';
+  correlation: SchedulerProcessDueWorkRequest['correlation'];
+  logger: Logger;
+  occurredAt: string;
+  outcome: 'attempted' | 'succeeded' | 'failed' | 'cancelled' | 'denied' | 'expired';
+  summary: string;
+}): Promise<void> {
+  if (!input.auditHistoryService) {
+    input.logger.warn('scheduler_runtime.audit_history_unavailable', {
+      action: input.action,
+      agentId: input.agentId,
+    });
+    return;
+  }
+
+  try {
+    await input.auditHistoryService.append({
+      action: input.action,
+      agentId: input.agentId,
+      attributes: input.attributes,
+      category: input.category,
+      correlation: input.correlation,
+      occurredAt: input.occurredAt,
+      outcome: input.outcome,
+      summary: input.summary,
+    });
+  } catch (error) {
+    input.logger.warn('scheduler_runtime.audit_append_failed', {
+      action: input.action,
+      agentId: input.agentId,
+      message: error instanceof Error ? error.message : 'Unknown audit append failure.',
+    });
+  }
+}
+
 export function createSchedulerRuntimeService(options: {
+  auditHistoryService: AuditHistoryService;
   headRuntimeService: HeadService;
   logger: Logger;
   repositories: RepositoryBundle;
@@ -178,6 +220,21 @@ export function createSchedulerRuntimeService(options: {
         materializedTaskIds: [],
         skippedByIdempotencyCount: 0,
       };
+      const appendAudit = (entry: {
+        action: string;
+        agentId: string;
+        attributes: Record<string, unknown>;
+        category: 'due_task';
+        correlation: SchedulerProcessDueWorkRequest['correlation'];
+        occurredAt: string;
+        outcome: 'attempted' | 'succeeded' | 'failed' | 'cancelled' | 'denied' | 'expired';
+        summary: string;
+      }) =>
+        appendSchedulerAuditSafe({
+          ...entry,
+          auditHistoryService: options.auditHistoryService,
+          logger: options.logger,
+        });
 
       for (let pass = 0; pass < maxPasses; pass += 1) {
         let passMadeProgress = false;
@@ -197,6 +254,23 @@ export function createSchedulerRuntimeService(options: {
           );
           if (existingIdempotency) {
             summary.skippedByIdempotencyCount += 1;
+            await appendAudit({
+              action: 'due_task.materialize.skipped',
+              agentId: storedSchedule.value.agentId,
+              attributes: {
+                occurrenceKey,
+                scheduleId: storedSchedule.value.id,
+              },
+              category: 'due_task',
+              correlation: {
+                ...input.correlation,
+                scheduleId: storedSchedule.value.id,
+                scheduleOccurrenceKey: occurrenceKey,
+              },
+              occurredAt: input.asOf,
+              outcome: 'cancelled',
+              summary: `Skipped duplicate schedule occurrence for '${storedSchedule.value.description}'.`,
+            });
             continue;
           }
 
@@ -247,9 +321,46 @@ export function createSchedulerRuntimeService(options: {
             passMadeProgress = true;
             summary.materializedScheduleCount += 1;
             summary.materializedTaskIds.push(task.id);
+            await appendAudit({
+              action: 'due_task.materialize.succeeded',
+              agentId: task.agentId,
+              attributes: {
+                occurrenceKey,
+                scheduleId: storedSchedule.value.id,
+                taskId: task.id,
+              },
+              category: 'due_task',
+              correlation: {
+                ...task.correlation,
+                scheduleId: storedSchedule.value.id,
+                scheduleOccurrenceKey: occurrenceKey,
+                taskId: task.id,
+              },
+              occurredAt: input.asOf,
+              outcome: 'succeeded',
+              summary: `Materialized due task '${task.id}' for schedule '${storedSchedule.value.id}'.`,
+            });
           } catch (error) {
             if (error instanceof DuplicateRecordError || error instanceof OptimisticConcurrencyError) {
               summary.skippedByIdempotencyCount += 1;
+              await appendAudit({
+                action: 'due_task.materialize.skipped',
+                agentId: storedSchedule.value.agentId,
+                attributes: {
+                  occurrenceKey,
+                  reason: 'concurrent_duplicate',
+                  scheduleId: storedSchedule.value.id,
+                },
+                category: 'due_task',
+                correlation: {
+                  ...input.correlation,
+                  scheduleId: storedSchedule.value.id,
+                  scheduleOccurrenceKey: occurrenceKey,
+                },
+                occurredAt: input.asOf,
+                outcome: 'cancelled',
+                summary: `Skipped duplicate materialization for schedule '${storedSchedule.value.id}'.`,
+              });
               continue;
             }
 
@@ -257,6 +368,24 @@ export function createSchedulerRuntimeService(options: {
             options.logger.warn('scheduler_runtime.materialize_schedule_failed', {
               message: error instanceof Error ? error.message : 'Unknown materialization failure.',
               scheduleId: storedSchedule.value.id,
+            });
+            await appendAudit({
+              action: 'due_task.materialize.failed',
+              agentId: storedSchedule.value.agentId,
+              attributes: {
+                message: error instanceof Error ? error.message : 'Unknown materialization failure.',
+                occurrenceKey,
+                scheduleId: storedSchedule.value.id,
+              },
+              category: 'due_task',
+              correlation: {
+                ...input.correlation,
+                scheduleId: storedSchedule.value.id,
+                scheduleOccurrenceKey: occurrenceKey,
+              },
+              occurredAt: input.asOf,
+              outcome: 'failed',
+              summary: `Failed to materialize the due task for schedule '${storedSchedule.value.id}'.`,
             });
           }
         }
@@ -287,8 +416,45 @@ export function createSchedulerRuntimeService(options: {
           });
           if (!reserved) {
             summary.skippedByIdempotencyCount += 1;
+            await appendAudit({
+              action: 'due_task.dispatch.skipped',
+              agentId: storedTask.value.agentId,
+              attributes: {
+                dueAt: storedTask.value.dueAt,
+                startKey,
+                taskId: storedTask.value.id,
+              },
+              category: 'due_task',
+              correlation: {
+                ...input.correlation,
+                scheduleId: storedTask.value.scheduleId,
+                taskId: storedTask.value.id,
+              },
+              occurredAt: input.asOf,
+              outcome: 'cancelled',
+              summary: `Skipped duplicate due-task dispatch for '${storedTask.value.id}'.`,
+            });
             continue;
           }
+
+          await appendAudit({
+            action: 'due_task.dispatch.attempted',
+            agentId: storedTask.value.agentId,
+            attributes: {
+              dueAt: storedTask.value.dueAt,
+              startKey,
+              taskId: storedTask.value.id,
+            },
+            category: 'due_task',
+            correlation: {
+              ...input.correlation,
+              scheduleId: storedTask.value.scheduleId,
+              taskId: storedTask.value.id,
+            },
+            occurredAt: input.asOf,
+            outcome: 'attempted',
+            summary: `Dispatching Head for due task '${storedTask.value.id}'.`,
+          });
 
           try {
             const startedTurn = await options.headRuntimeService.startTurn({
@@ -322,6 +488,24 @@ export function createSchedulerRuntimeService(options: {
             passMadeProgress = true;
             summary.launchedDueTaskTurnCount += 1;
             summary.launchedTaskIds.push(storedTask.value.id);
+            await appendAudit({
+              action: 'due_task.dispatch.succeeded',
+              agentId: storedTask.value.agentId,
+              attributes: {
+                headTurnId: startedTurn.headTurn.id,
+                taskId: storedTask.value.id,
+              },
+              category: 'due_task',
+              correlation: {
+                ...input.correlation,
+                headTurnId: startedTurn.headTurn.id,
+                scheduleId: storedTask.value.scheduleId,
+                taskId: storedTask.value.id,
+              },
+              occurredAt: input.asOf,
+              outcome: 'succeeded',
+              summary: `Launched Head turn '${startedTurn.headTurn.id}' for due task '${storedTask.value.id}'.`,
+            });
           } catch (error) {
             const expiredRecord = {
               ...reserved.value,
@@ -334,6 +518,23 @@ export function createSchedulerRuntimeService(options: {
 
             if (error instanceof ConflictError) {
               summary.activeHeadConflictCount += 1;
+              await appendAudit({
+                action: 'due_task.dispatch.conflict',
+                agentId: storedTask.value.agentId,
+                attributes: {
+                  message: error.message,
+                  taskId: storedTask.value.id,
+                },
+                category: 'due_task',
+                correlation: {
+                  ...input.correlation,
+                  scheduleId: storedTask.value.scheduleId,
+                  taskId: storedTask.value.id,
+                },
+                occurredAt: input.asOf,
+                outcome: 'cancelled',
+                summary: `Skipped due-task dispatch for '${storedTask.value.id}' because another Head turn is active.`,
+              });
               continue;
             }
 
@@ -341,6 +542,23 @@ export function createSchedulerRuntimeService(options: {
             options.logger.warn('scheduler_runtime.start_due_task_failed', {
               message: error instanceof Error ? error.message : 'Unknown due-task start failure.',
               taskId: storedTask.value.id,
+            });
+            await appendAudit({
+              action: 'due_task.dispatch.failed',
+              agentId: storedTask.value.agentId,
+              attributes: {
+                message: error instanceof Error ? error.message : 'Unknown due-task start failure.',
+                taskId: storedTask.value.id,
+              },
+              category: 'due_task',
+              correlation: {
+                ...input.correlation,
+                scheduleId: storedTask.value.scheduleId,
+                taskId: storedTask.value.id,
+              },
+              occurredAt: input.asOf,
+              outcome: 'failed',
+              summary: `Failed to dispatch due task '${storedTask.value.id}'.`,
             });
           }
         }

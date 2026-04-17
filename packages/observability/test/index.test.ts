@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createLoggerFactory,
+  redactAuditAttributes,
   runWithRequestContext,
   updateRequestContext,
 } from '../src/index.js';
@@ -42,5 +43,25 @@ describe('@echidna-claw/observability', () => {
     expect(entry.requestContext?.agentId).toBe('agt_test-agent');
     expect(entry.fields.token).toBe('[REDACTED]');
     expect((entry.fields.nested as { authorization: string }).authorization).toBe('[REDACTED]');
+  });
+
+  it('redacts nested audit attributes before stringifying them', () => {
+    const redacted = redactAuditAttributes({
+      apiToken: 'top-secret',
+      nested: {
+        authorization: 'Bearer top-secret',
+        safe: 'kept',
+      },
+      items: [
+        {
+          password: 'hidden',
+        },
+        'value',
+      ],
+    });
+
+    expect(redacted.apiToken).toBe('[REDACTED]');
+    expect(redacted.nested).toBe('{"authorization":"[REDACTED]","safe":"kept"}');
+    expect(redacted.items).toBe('[{"password":"[REDACTED]"},"value"]');
   });
 });

@@ -2,6 +2,7 @@ import { type PlatformRecord } from '@echidna-claw/contracts';
 
 import {
   AGENT_STATE_CONTAINER_NAME,
+  AUDIT_HISTORY_CONTAINER_NAME,
   USAGE_EVENTS_CONTAINER_NAME,
 } from '../documents/container-names.js';
 import { type StoredRecord } from '../documents/envelope.js';
@@ -70,4 +71,5 @@ export function assertSameAgent(
 }
 
 export const operationalContainerName = AGENT_STATE_CONTAINER_NAME;
+export const auditHistoryContainerName = AUDIT_HISTORY_CONTAINER_NAME;
 export const usageEventsContainerName = USAGE_EVENTS_CONTAINER_NAME;

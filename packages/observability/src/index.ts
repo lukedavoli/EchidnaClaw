@@ -209,3 +209,9 @@ export const observabilityPlaceholder = 'observability' as const;
 export function formatLogLine(scope: string, message: string): string {
   return `[${scope}] ${message}`;
 }
+
+export * from './analytics.js';
+export * from './costing.js';
+export * from './redaction.js';
+export * from './telemetry.js';
+export * from './tracing.js';

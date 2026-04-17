@@ -124,6 +124,12 @@
       ]
     }
   },
+  "observability": {
+    "auditRetentionDays": 30,
+    "analyticsDefaultWindow": "30d",
+    "analyticsMaxChartPoints": 90,
+    "compatibilityRawEventsEnabled": true
+  },
   "sandbox": {
     "defaultPolicy": "standard",
     "defaultPackageAllowlist": "default-runtime-pnpm",

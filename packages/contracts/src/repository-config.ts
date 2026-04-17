@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { isoDateTimeSchema, modelIdSchema, nonEmptyStringSchema, nonNegativeNumberSchema } from './identifiers.js';
+import { analyticsWindowSchema } from './services.js';
 import {
   approvalCategorySchema,
   headTriggerKindSchema,
@@ -140,6 +141,15 @@ export const memoryConfigSchema = z
   })
   .strict();
 
+export const observabilityConfigSchema = z
+  .object({
+    auditRetentionDays: z.number().int().positive(),
+    analyticsDefaultWindow: analyticsWindowSchema,
+    analyticsMaxChartPoints: z.number().int().positive(),
+    compatibilityRawEventsEnabled: z.boolean().default(true),
+  })
+  .strict();
+
 export const repositoryConfigSchema = z
   .object({
     version: z.literal('1'),
@@ -165,6 +175,7 @@ export const repositoryConfigSchema = z
       })
       .strict(),
     memory: memoryConfigSchema,
+    observability: observabilityConfigSchema,
     sandbox: z
       .object({
         defaultPolicy: nonEmptyStringSchema,
@@ -304,4 +315,5 @@ export type CredentialServiceConfig = z.infer<typeof credentialServiceConfigSche
 export type MemoryRememberCategory = z.infer<typeof memoryRememberCategorySchema>;
 export type MemoryExcludeCategory = z.infer<typeof memoryExcludeCategorySchema>;
 export type MemoryConfig = z.infer<typeof memoryConfigSchema>;
+export type ObservabilityConfig = z.infer<typeof observabilityConfigSchema>;
 export type RepositoryConfig = z.infer<typeof repositoryConfigSchema>;
