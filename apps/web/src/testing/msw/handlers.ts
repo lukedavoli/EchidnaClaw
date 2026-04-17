@@ -1,4 +1,5 @@
 import {
+  analyticsWindowSchema,
   adminTelegramProvisioningHandoffSchema,
   correlationMetadataSchema,
   errorResponseSchema,
@@ -7,12 +8,15 @@ import {
   webCreateAgentRequestSchema,
   type AdminAgentSummary,
   type AdminTelegramProvisioningHandoff,
+  type AnalyticsAgentSummary,
   type AnalyticsOverview,
+  type AnalyticsWindow,
 } from '@echidna-claw/contracts';
 import { http, HttpResponse } from 'msw';
 import { z } from 'zod';
 
 import {
+  createAnalyticsAgentSummaryFixture,
   createAdminAgentDetailFixture,
   createAdminAgentSummaryFixture,
   createAnalyticsOverviewFixture,
@@ -33,8 +37,9 @@ type AnalyticsMode = 'ready' | 'not-implemented' | 'unavailable';
 type MockState = {
   agentMode: AgentMode;
   agents: AdminAgentSummary[];
+  agentAnalytics: Record<string, AnalyticsAgentSummary>;
   analyticsMode: AnalyticsMode;
-  analyticsOverview: AnalyticsOverview;
+  analyticsOverviews: Partial<Record<AnalyticsWindow, AnalyticsOverview>>;
   nextAgentId: number;
   provisioningHandoffs: Record<string, AdminTelegramProvisioningHandoff>;
   readinessReady: boolean;
@@ -62,8 +67,11 @@ function createDefaultState(): MockState {
         },
       }),
     ],
+    agentAnalytics: {},
     analyticsMode: 'ready',
-    analyticsOverview: createAnalyticsOverviewFixture(),
+    analyticsOverviews: {
+      '30d': createAnalyticsOverviewFixture(),
+    },
     nextAgentId: 3,
     provisioningHandoffs: {},
     readinessReady: true,
@@ -97,8 +105,37 @@ function createStructuredError(
   );
 }
 
-function updateAnalyticsTotals() {
-  state.analyticsOverview = createAnalyticsOverviewFixture(state.analyticsOverview.events);
+function parseWindow(window: string | null): AnalyticsWindow | undefined {
+  const parsed = analyticsWindowSchema.safeParse(window);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function analyticsAgentKey(agentId: string, window?: AnalyticsWindow) {
+  return `${agentId}:${window ?? 'default'}`;
+}
+
+function getAnalyticsOverview(window: string | null): AnalyticsOverview {
+  const resolvedWindow = parseWindow(window) ?? '30d';
+  return (
+    state.analyticsOverviews[resolvedWindow] ??
+    createAnalyticsOverviewFixture(undefined, {
+      window: resolvedWindow,
+    })
+  );
+}
+
+function getAgentAnalytics(agentId: string, window: string | null): AnalyticsAgentSummary {
+  const resolvedWindow = parseWindow(window);
+  const agent = getAgentSummary(agentId);
+
+  return (
+    state.agentAnalytics[analyticsAgentKey(agentId, resolvedWindow)] ??
+    createAnalyticsAgentSummaryFixture({
+      agentId,
+      agentName: agent?.agent.name ?? 'Unknown agent',
+      window: resolvedWindow ?? '30d',
+    })
+  );
 }
 
 function deriveProvisioningHandoff(
@@ -242,8 +279,11 @@ export const mockWebApiState = {
   setAnalyticsMode(mode: AnalyticsMode) {
     state.analyticsMode = mode;
   },
-  setAnalyticsOverview(overview: AnalyticsOverview) {
-    state.analyticsOverview = overview;
+  setAnalyticsOverview(overview: AnalyticsOverview, window?: AnalyticsWindow) {
+    state.analyticsOverviews[window ?? overview.window] = overview;
+  },
+  setAgentAnalytics(agentId: string, summary: AnalyticsAgentSummary, window?: AnalyticsWindow) {
+    state.agentAnalytics[analyticsAgentKey(agentId, window ?? summary.window)] = summary;
   },
   setProvisioningHandoff(handoff: AdminTelegramProvisioningHandoff) {
     upsertProvisioningHandoff(handoff);
@@ -628,8 +668,37 @@ export async function resolveMockApiRequest(request: Request) {
       );
     }
 
-    updateAnalyticsTotals();
-    return jsonResponse(state.analyticsOverview);
+    return jsonResponse(getAnalyticsOverview(url.searchParams.get('window')));
+  }
+
+  const agentAnalyticsMatch = url.pathname.match(/^\/api\/admin\/analytics\/agents\/([^/]+)$/);
+
+  if (request.method === 'GET' && agentAnalyticsMatch) {
+    const agentId = String(agentAnalyticsMatch[1]);
+
+    if (state.analyticsMode === 'not-implemented') {
+      return createStructuredError(
+        501,
+        'not_implemented_yet',
+        'Analytics aggregation is reserved for Step 18.',
+        false,
+      );
+    }
+
+    if (state.analyticsMode === 'unavailable') {
+      return createStructuredError(
+        503,
+        'dependency_unavailable',
+        'Analytics dependencies are unavailable.',
+        true,
+      );
+    }
+
+    if (!getAgentSummary(agentId)) {
+      return createStructuredError(404, 'not_found', 'Agent not found.', false);
+    }
+
+    return jsonResponse(getAgentAnalytics(agentId, url.searchParams.get('window')));
   }
 
   const approvalMatch = url.pathname.match(/^\/api\/admin\/approvals\/([^/]+)$/);
@@ -971,7 +1040,7 @@ export const handlers = [
     },
   ),
 
-  http.get(`${mockApiBaseUrl}/api/admin/analytics/overview`, () => {
+  http.get(`${mockApiBaseUrl}/api/admin/analytics/overview`, ({ request }) => {
     if (state.analyticsMode === 'not-implemented') {
       return createStructuredError(
         501,
@@ -990,8 +1059,37 @@ export const handlers = [
       );
     }
 
-    updateAnalyticsTotals();
-    return HttpResponse.json(state.analyticsOverview);
+    const url = new URL(request.url);
+    return HttpResponse.json(getAnalyticsOverview(url.searchParams.get('window')));
+  }),
+
+  http.get(`${mockApiBaseUrl}/api/admin/analytics/agents/:agentId`, ({ params, request }) => {
+    const agentId = String(params.agentId);
+    const url = new URL(request.url);
+
+    if (state.analyticsMode === 'not-implemented') {
+      return createStructuredError(
+        501,
+        'not_implemented_yet',
+        'Analytics aggregation is reserved for Step 18.',
+        false,
+      );
+    }
+
+    if (state.analyticsMode === 'unavailable') {
+      return createStructuredError(
+        503,
+        'dependency_unavailable',
+        'Analytics dependencies are unavailable.',
+        true,
+      );
+    }
+
+    if (!getAgentSummary(agentId)) {
+      return createStructuredError(404, 'not_found', 'Agent not found.', false);
+    }
+
+    return HttpResponse.json(getAgentAnalytics(agentId, url.searchParams.get('window')));
   }),
 
   http.get(`${mockApiBaseUrl}/api/admin/approvals/:approvalId`, ({ params }) =>

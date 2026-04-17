@@ -3,6 +3,7 @@ import {
   adminAgentSummarySchema,
   adminTelegramProvisioningHandoffSchema,
   approvalIdSchema,
+  analyticsAgentSummarySchema,
   analyticsOverviewSchema,
   approvalStateSchema,
   errorResponseSchema,
@@ -13,6 +14,8 @@ import {
   type AdminAgentSummary,
   type AdminTelegramProvisioningHandoff,
   type Agent,
+  type AnalyticsAgentSummary,
+  type AnalyticsWindow,
   type AnalyticsOverview,
   type ReadinessResponse,
 } from '@echidna-claw/contracts';
@@ -34,6 +37,23 @@ type CreateWebApiClientOptions = {
   baseUrl?: string;
   fetchImplementation?: typeof fetch;
 };
+
+function withQuery(path: string, query?: Record<string, string | undefined>) {
+  if (!query) {
+    return path;
+  }
+
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(query)) {
+    if (value) {
+      searchParams.set(key, value);
+    }
+  }
+
+  const search = searchParams.toString();
+  return search.length > 0 ? `${path}?${search}` : path;
+}
 
 export function createWebApiClient(options: CreateWebApiClientOptions = {}) {
   const http = createHttpClient({
@@ -69,11 +89,21 @@ export function createWebApiClient(options: CreateWebApiClientOptions = {}) {
         schema: adminAgentDetailSchema,
       }) as Promise<AdminAgentDetail>;
     },
-    getAnalyticsOverview() {
+    getAnalyticsOverview(window?: AnalyticsWindow) {
       return http.request({
-        path: '/api/admin/analytics/overview',
+        path: withQuery('/api/admin/analytics/overview', {
+          ...(window ? { window } : {}),
+        }),
         schema: analyticsOverviewSchema,
       }) as Promise<AnalyticsOverview>;
+    },
+    getAgentAnalytics(agentId: string, window?: AnalyticsWindow) {
+      return http.request({
+        path: withQuery(`/api/admin/analytics/agents/${agentId}`, {
+          ...(window ? { window } : {}),
+        }),
+        schema: analyticsAgentSummarySchema,
+      }) as Promise<AnalyticsAgentSummary>;
     },
     getApprovalState(approvalId: string) {
       return http.request({

@@ -41,6 +41,7 @@ describe('agent provisioning page', () => {
 
     renderApp(['/agents/agt_fixture-provisioning/provisioning']);
 
+    expect(await screen.findByText('Provisioning Agent')).toBeInTheDocument();
     await user.type(await screen.findByLabelText('Bot token'), '123456:good-token');
     await user.click(await screen.findByRole('button', { name: 'Verify token' }));
 
@@ -93,7 +94,9 @@ describe('agent provisioning page', () => {
 
     renderApp(['/agents/agt_fixture-retry/provisioning']);
 
-    await user.click(await screen.findByRole('button', { name: 'Retry provisioning' }));
+    expect(await screen.findByText('Retry Agent')).toBeInTheDocument();
+    const retryButtons = await screen.findAllByRole('button', { name: 'Retry provisioning' });
+    await user.click(retryButtons[retryButtons.length - 1]!);
 
     expect(await screen.findByRole('link', { name: 'Open Telegram' })).toBeInTheDocument();
     expect(await screen.findByText('retry-bootstrap-code')).toBeInTheDocument();

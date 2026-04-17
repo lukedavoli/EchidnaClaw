@@ -1,4 +1,5 @@
 import { Button, Card, Group, Stack, Text, Tooltip } from '@mantine/core';
+import { Link } from 'react-router-dom';
 
 import { formatDateTime } from '../../../lib/formatting/dates.js';
 import type { AgentViewModel } from '../models.js';
@@ -45,6 +46,10 @@ export function AgentCard({ agent, busy, onArchive, onRetry, onRestore }: AgentC
         </Stack>
 
         <Group wrap="wrap">
+          <Button component={Link} to={`/agents/${agent.id}`}>
+            Open
+          </Button>
+
           {agent.isArchived ? (
             <Button color="teal" loading={busy} onClick={() => onRestore(agent)} variant="light">
               Restore

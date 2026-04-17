@@ -8,7 +8,11 @@ import { createAdminAgentSummaryFixture } from '../../testing/fixtures/records.j
 import { mockWebApiState } from '../../testing/msw/handlers.js';
 
 function renderApp(initialEntries: string[]) {
-  return render(<App router={createAppRouter({ initialEntries })} />);
+  const router = createAppRouter({ initialEntries });
+  return {
+    router,
+    ...render(<App router={router} />),
+  };
 }
 
 function requireElement<T extends Element>(value: T | null) {
@@ -19,15 +23,16 @@ function requireElement<T extends Element>(value: T | null) {
 describe('agents page flows', () => {
   it('creates an agent and lands on the provisioning handoff', async () => {
     const user = userEvent.setup();
-    renderApp(['/agents/new']);
+    const { router } = renderApp(['/agents/new']);
 
     await user.type(screen.getByLabelText('Name'), 'Launch Agent');
     await user.clear(screen.getByLabelText('Time zone'));
     await user.type(screen.getByLabelText('Time zone'), 'UTC');
     await user.click(screen.getByRole('button', { name: 'Create agent' }));
 
-    expect(await screen.findByRole('heading', { name: 'Provision Telegram bot' })).toBeInTheDocument();
+    expect(await screen.findByText('Launch Agent')).toBeInTheDocument();
     expect(await screen.findByText('Submit Telegram bot token')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/agents/agt_created-3');
   });
 
   it('archives and restores an agent across active and archived views', async () => {
@@ -76,6 +81,19 @@ describe('agents page flows', () => {
     expect(screen.queryByText('External Agent')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
     expect(await screen.findByText('External Agent')).toBeInTheDocument();
+  });
+
+  it('opens the detail page from the roster card', async () => {
+    const user = userEvent.setup();
+    const { router } = renderApp(['/agents']);
+
+    const card = requireElement(
+      (await screen.findByText('Ops Triage Agent')).closest('[class*="mantine-Card-root"]'),
+    );
+    await user.click(within(card).getByRole('link', { name: 'Open' }));
+
+    expect(await screen.findByText('Telegram channel status')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/agents/agt_fixture-agent');
   });
 
   it('retries provisioning when the primary channel is failed', async () => {
