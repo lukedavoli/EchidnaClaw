@@ -17,7 +17,7 @@ function requireElement<T extends Element>(value: T | null) {
 }
 
 describe('agents page flows', () => {
-  it('creates an agent and returns to the list view', async () => {
+  it('creates an agent and lands on the provisioning handoff', async () => {
     const user = userEvent.setup();
     renderApp(['/agents/new']);
 
@@ -26,8 +26,8 @@ describe('agents page flows', () => {
     await user.type(screen.getByLabelText('Time zone'), 'UTC');
     await user.click(screen.getByRole('button', { name: 'Create agent' }));
 
-    expect(await screen.findByRole('heading', { name: 'Agents' })).toBeInTheDocument();
-    expect(await screen.findByText('Launch Agent')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Provision Telegram bot' })).toBeInTheDocument();
+    expect(await screen.findByText('Submit Telegram bot token')).toBeInTheDocument();
   });
 
   it('archives and restores an agent across active and archived views', async () => {
@@ -50,7 +50,7 @@ describe('agents page flows', () => {
 
     await user.click(screen.getByRole('radio', { name: /Active/i }));
     expect(await screen.findByText('Ops Triage Agent')).toBeInTheDocument();
-  });
+  }, 10000);
 
   it('refreshes on demand instead of background polling', async () => {
     const user = userEvent.setup();

@@ -33,6 +33,7 @@ import type { TelegramBotApiAdapter } from '../../adapters/telegram/index.js';
 import type {
   ApprovalCallbackService,
   TelegramIngressService,
+  TelegramProvisioningService,
   TrustedChannelIngressDispatcher,
 } from './contracts.js';
 import type { CredentialLifecycleService } from '../runtime/credential-lifecycle-service.js';
@@ -284,6 +285,7 @@ export function createTelegramIngressService(options: {
   logger: Logger;
   repositories: RepositoryBundle;
   telegramBotApi: TelegramBotApiAdapter;
+  telegramProvisioningService: TelegramProvisioningService;
   trustedChannelIngressDispatcher: TrustedChannelIngressDispatcher;
 }): TelegramIngressService {
   return {
@@ -307,20 +309,6 @@ export function createTelegramIngressService(options: {
         return;
       }
 
-      if (
-        agent.value.lifecycleState !== 'active' ||
-        agent.value.provisioningState !== 'active' ||
-        resolvedChannel.value.state !== 'active'
-      ) {
-        options.logger.info('telegram_ingress.channel_inactive', {
-          agentId: agent.value.id,
-          channelId: input.channelId,
-          channelState: resolvedChannel.value.state,
-          provisioningState: agent.value.provisioningState,
-        });
-        return;
-      }
-
       const inboundMessageId = createDeterministicInboundMessageId(
         agent.value.id,
         normalized.externalUpdateId,
@@ -336,23 +324,70 @@ export function createTelegramIngressService(options: {
         correlation,
       });
 
+      if (agent.value.lifecycleState !== 'active') {
+        options.logger.info('telegram_ingress.channel_inactive', {
+          agentId: agent.value.id,
+          channelId: input.channelId,
+          channelState: resolvedChannel.value.state,
+          provisioningState: agent.value.provisioningState,
+        });
+        return;
+      }
+
       let storedChannel = resolvedChannel;
       let appendResult:
         | Awaited<ReturnType<RepositoryBundle['messages']['appendInboundMessage']>>
         | undefined;
+      let provisioningSession:
+        | Awaited<ReturnType<TelegramProvisioningService['evaluateBootstrapUpdate']>>['session']
+        | undefined;
+      let provisioningMode = false;
 
       for (let attempt = 0; attempt < INBOUND_APPEND_RETRY_LIMIT; attempt += 1) {
         const receivedAt = new Date().toISOString();
-        const evaluation = evaluateNormalizedUpdate({
-          channel: storedChannel.value,
-          normalized,
-        });
+        const activeChannel =
+          agent.value.provisioningState === 'active' && storedChannel.value.state === 'active';
+        const bootstrapEvaluation = activeChannel
+          ? null
+          : await options.telegramProvisioningService.evaluateBootstrapUpdate({
+              channel: storedChannel,
+              normalized,
+              receivedAt,
+            });
+        const bootstrapKind: InboundMessage['kind'] =
+          bootstrapEvaluation?.trusted || normalized.kind === 'text'
+            ? 'text'
+            : 'unsupported';
+
+        if (!activeChannel && !bootstrapEvaluation?.handled) {
+          options.logger.info('telegram_ingress.channel_inactive', {
+            agentId: agent.value.id,
+            channelId: input.channelId,
+            channelState: storedChannel.value.state,
+            provisioningState: agent.value.provisioningState,
+          });
+          return;
+        }
+
+        const evaluation = activeChannel
+          ? evaluateNormalizedUpdate({
+              channel: storedChannel.value,
+              normalized,
+            })
+          : {
+              bindTrustedIdentity: false,
+              kind: bootstrapKind,
+              trusted: bootstrapEvaluation?.trusted ?? false,
+              ...(bootstrapEvaluation?.unsupportedType
+                ? { unsupportedType: bootstrapEvaluation.unsupportedType }
+                : {}),
+            };
         const pendingCredentialCapture =
-          evaluation.trusted && normalized.kind === 'text'
+          activeChannel && evaluation.trusted && normalized.kind === 'text'
             ? await options.credentialLifecycleService.getPendingRequestedCapture(agent.value.id)
             : null;
         const secureCredentialCapture =
-          pendingCredentialCapture?.requestChannelId === storedChannel.value.id
+          activeChannel && pendingCredentialCapture?.requestChannelId === storedChannel.value.id
             ? pendingCredentialCapture
             : null;
         const sequence = storedChannel.value.lastInboundSequence + 1;
@@ -406,6 +441,8 @@ export function createTelegramIngressService(options: {
             },
             message,
           });
+          provisioningMode = !activeChannel;
+          provisioningSession = bootstrapEvaluation?.session;
           break;
         } catch (error) {
           if (!(error instanceof OptimisticConcurrencyError) || attempt === INBOUND_APPEND_RETRY_LIMIT - 1) {
@@ -464,6 +501,18 @@ export function createTelegramIngressService(options: {
                 : 'This action is not trusted for this agent.',
           });
         }
+        return;
+      }
+
+      if (provisioningMode && provisioningSession && appendResult.message.value.trusted) {
+        await options.telegramProvisioningService.completeBootstrapBinding({
+          agent,
+          channel: appendResult.channel,
+          correlation,
+          inboundMessage: appendResult.message.value,
+          normalized,
+          session: provisioningSession,
+        });
         return;
       }
 

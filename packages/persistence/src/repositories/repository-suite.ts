@@ -40,6 +40,10 @@ import { type PersistedRecordStore } from './store.js';
 import { DefaultRunJournalRepository, type RunJournalRepository } from './run-journal-repository.js';
 import { DefaultScheduleRepository, type ScheduleRepository } from './schedule-repository.js';
 import { DefaultTaskRepository, type TaskRepository } from './task-repository.js';
+import {
+  DefaultTelegramProvisioningSessionRepository,
+  type TelegramProvisioningSessionRepository,
+} from './telegram-provisioning-session-repository.js';
 import { DefaultUsageEventRepository, type UsageEventRepository } from './usage-event-repository.js';
 import { DefaultWorkingContextRepository, type WorkingContextRepository } from './working-context-repository.js';
 
@@ -58,6 +62,7 @@ export interface RepositorySuite {
   runJournals: RunJournalRepository;
   schedules: ScheduleRepository;
   tasks: TaskRepository;
+  telegramProvisioningSessions: TelegramProvisioningSessionRepository;
   usageEvents: UsageEventRepository;
   workingContexts: WorkingContextRepository;
 }
@@ -109,6 +114,9 @@ export function createRepositorySuite(dependencies: RepositorySuiteDependencies)
     runJournals: new DefaultRunJournalRepository(dependencies.recordStore),
     schedules: new DefaultScheduleRepository(dependencies.recordStore),
     tasks: new DefaultTaskRepository(dependencies.recordStore),
+    telegramProvisioningSessions: new DefaultTelegramProvisioningSessionRepository(
+      dependencies.recordStore,
+    ),
     usageEvents: new DefaultUsageEventRepository(dependencies.recordStore),
     workingContexts: new DefaultWorkingContextRepository(dependencies.recordStore),
   };

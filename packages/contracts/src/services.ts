@@ -38,6 +38,8 @@ import {
   outboundMessageActionSchema,
   SandboxSession,
   sandboxCredentialBindingSchema,
+  telegramProvisioningFlowKindSchema,
+  telegramProvisioningSessionStateSchema,
   usageEventSchema,
 } from './records.js';
 
@@ -240,6 +242,34 @@ export const adminCredentialSummarySchema = z
   })
   .strict();
 
+export const adminTelegramProvisioningHandoffSchema = z
+  .object({
+    agentId: agentIdSchema,
+    channelId: channelIdSchema,
+    provider: z.literal('telegram'),
+    attemptNumber: positiveIntegerSchema,
+    state: telegramProvisioningSessionStateSchema,
+    requiresBotToken: z.boolean(),
+    botHandle: nonEmptyStringSchema.nullable(),
+    botDisplayName: nonEmptyStringSchema.nullable(),
+    openTelegramUrl: nonEmptyStringSchema.nullable(),
+    operatorActionUrl: nonEmptyStringSchema.nullable(),
+    instructions: z.array(nonEmptyStringSchema),
+    bootstrapCode: nonEmptyStringSchema.nullable(),
+    bootstrapExpiresAt: isoDateTimeSchema.nullable(),
+    lastErrorCode: nonEmptyStringSchema.nullable(),
+    lastErrorMessage: z.string().trim().nullable(),
+  })
+  .strict();
+
+export const submitTelegramBotTokenRequestSchema = z
+  .object({
+    correlation: correlationMetadataSchema,
+    flowKind: telegramProvisioningFlowKindSchema.optional(),
+    botToken: nonEmptyStringSchema,
+  })
+  .strict();
+
 export const completeAgentProvisioningRequestSchema = z
   .object({
     agentId: agentIdSchema,
@@ -414,6 +444,10 @@ export type AdminPrimaryChannelSummary = z.infer<typeof adminPrimaryChannelSumma
 export type AdminAgentSummary = z.infer<typeof adminAgentSummarySchema>;
 export type AdminAgentDetail = z.infer<typeof adminAgentDetailSchema>;
 export type AdminCredentialSummary = z.infer<typeof adminCredentialSummarySchema>;
+export type AdminTelegramProvisioningHandoff = z.infer<
+  typeof adminTelegramProvisioningHandoffSchema
+>;
+export type SubmitTelegramBotTokenRequest = z.infer<typeof submitTelegramBotTokenRequestSchema>;
 export type CompleteAgentProvisioningRequest = z.infer<typeof completeAgentProvisioningRequestSchema>;
 export type RecordAgentProvisioningFailureRequest = z.infer<
   typeof recordAgentProvisioningFailureRequestSchema
@@ -460,10 +494,18 @@ export interface SchedulerService {
 export interface WebControlPlaneService {
   createAgent(input: WebCreateAgentRequest): Promise<AdminAgentDetail>;
   getAgent(agentId: z.infer<typeof agentIdSchema>): Promise<AdminAgentDetail>;
+  getTelegramProvisioningHandoff(
+    agentId: z.infer<typeof agentIdSchema>,
+  ): Promise<AdminTelegramProvisioningHandoff>;
   listAgents(): Promise<AdminAgentSummary[]>;
   retryAgentProvisioning(input: WebRetryAgentProvisioningRequest): Promise<AdminAgentDetail>;
   softDeleteAgent(input: WebSoftDeleteAgentRequest): Promise<AdminAgentDetail>;
   restoreAgent(input: WebRestoreAgentRequest): Promise<AdminAgentDetail>;
+  submitTelegramBotToken(
+    input: SubmitTelegramBotTokenRequest & {
+      agentId: z.infer<typeof agentIdSchema>;
+    },
+  ): Promise<AdminTelegramProvisioningHandoff>;
   completeAgentProvisioning(input: CompleteAgentProvisioningRequest): Promise<AdminAgentDetail>;
   recordAgentProvisioningFailure(input: RecordAgentProvisioningFailureRequest): Promise<AdminAgentDetail>;
   getApprovalState(approvalId: z.infer<typeof approvalIdSchema>): Promise<z.infer<typeof approvalStateSchema>>;

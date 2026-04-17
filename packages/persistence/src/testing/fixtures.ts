@@ -16,6 +16,7 @@ import {
   type Schedule,
   type Task,
   type TaskEnvelope,
+  type TelegramProvisioningSession,
   type UsageEvent,
   type WorkingContext,
 } from '@echidna-claw/contracts';
@@ -575,6 +576,43 @@ export function createAuditEvent(overrides: Partial<AuditEvent> = {}): AuditEven
       taskId: 'tsk_persistence',
     },
     artifactIds: [],
+    ...overrides,
+  };
+}
+
+export function createTelegramProvisioningSession(
+  overrides: Partial<TelegramProvisioningSession> = {},
+): TelegramProvisioningSession {
+  return {
+    id: 'tps_persistence',
+    recordType: 'telegram_provisioning_session',
+    schemaVersion: 1,
+    createdAt: FIXTURE_TIMESTAMP,
+    updatedAt: FIXTURE_TIMESTAMP,
+    correlation: createCorrelationMetadata(),
+    agentId: 'agt_persistence',
+    channelId: 'chn_persistence',
+    provider: 'telegram',
+    attemptNumber: 1,
+    flowKind: 'managed_bot',
+    state: 'pending_operator_action',
+    credentialId: null,
+    botUserId: null,
+    botDisplayName: null,
+    botHandle: null,
+    webhookUrl: null,
+    webhookConfiguredAt: null,
+    bootstrapCode: null,
+    bootstrapExpiresAt: null,
+    bindingInboundMessageId: null,
+    boundExternalChatId: null,
+    boundTrustedExternalUserId: null,
+    requestedAt: FIXTURE_TIMESTAMP,
+    tokenVerifiedAt: null,
+    completedAt: null,
+    failedAt: null,
+    lastErrorCode: null,
+    lastErrorMessage: null,
     ...overrides,
   };
 }

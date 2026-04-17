@@ -13,6 +13,18 @@ type TelegramSendMessageResult = {
   message_id: number;
 };
 
+type TelegramGetMeResult = {
+  first_name?: string;
+  id: number | string;
+  username?: string;
+};
+
+export type TelegramBotIdentity = {
+  botUserId: string;
+  displayName: string | null;
+  username: string | null;
+};
+
 export class TelegramBotApiError extends Error {
   constructor(
     message: string,
@@ -33,12 +45,18 @@ export interface TelegramBotApiAdapter {
     callbackQueryId: string;
     text?: string;
   }): Promise<void>;
+  getMe(input: { botToken: string }): Promise<TelegramBotIdentity>;
   sendMessage(input: {
     botToken: string;
     chatId: string;
     text: string;
     actions?: OutboundMessageAction[];
   }): Promise<{ externalMessageId: string }>;
+  setWebhook(input: {
+    botToken: string;
+    webhookUrl: string;
+    secretToken: string;
+  }): Promise<void>;
 }
 
 function mapTelegramFailure(statusCode: number | undefined): {
@@ -187,6 +205,16 @@ export function createTelegramTransportAdapter(config: Pick<ApiRuntimeConfig, 't
           show_alert: false,
         });
       },
+      async getMe(input): Promise<TelegramBotIdentity> {
+        const result = await post<TelegramGetMeResult>(input.botToken, 'getMe', {});
+        const username = result.username?.replace(/^@+/, '').trim() ?? '';
+
+        return {
+          botUserId: String(result.id).trim(),
+          displayName: result.first_name?.trim() || null,
+          username: username.length > 0 ? username : null,
+        };
+      },
       async sendMessage(input): Promise<{ externalMessageId: string }> {
         const result = await post<TelegramSendMessageResult>(input.botToken, 'sendMessage', {
           chat_id: input.chatId,
@@ -199,6 +227,12 @@ export function createTelegramTransportAdapter(config: Pick<ApiRuntimeConfig, 't
         return {
           externalMessageId: String(result.message_id),
         };
+      },
+      async setWebhook(input): Promise<void> {
+        await post<boolean>(input.botToken, 'setWebhook', {
+          secret_token: input.secretToken,
+          url: input.webhookUrl,
+        });
       },
     },
     health: {

@@ -11,6 +11,7 @@ import {
 } from '../services/channel/dispatchers.js';
 import { createOutboundMessagingService } from '../services/channel/outbound-messaging-service.js';
 import { createTelegramIngressService } from '../services/channel/telegram-ingress-service.js';
+import { createTelegramProvisioningService } from '../services/channel/telegram-provisioning-service.js';
 import { createApprovalLifecycleService } from '../services/runtime/approval-lifecycle-service.js';
 import { createAuditHistoryService } from '../services/runtime/audit-history-service.js';
 import { createCredentialLifecycleService } from '../services/runtime/credential-lifecycle-service.js';
@@ -99,6 +100,13 @@ export function registerServices(options: {
     approvalLifecycleService,
     logger: options.loggerFactory.createLogger({ service: 'approval_callback' }),
   });
+  const telegramProvisioningService = createTelegramProvisioningService({
+    config: options.config,
+    credentialLifecycleService,
+    logger: options.loggerFactory.createLogger({ service: 'telegram_provisioning' }),
+    repositories: adapters.adapters.repositories,
+    telegramBotApi: adapters.adapters.telegramBotApi,
+  });
   const workingContextSummaryService = createWorkingContextSummaryService({
     logger: options.loggerFactory.createLogger({ service: 'working_context_summary' }),
     summarizer: adapters.adapters.foundry.workingContextSummarizer,
@@ -170,14 +178,17 @@ export function registerServices(options: {
         logger: options.loggerFactory.createLogger({ service: 'telegram_ingress' }),
         repositories: adapters.adapters.repositories,
         telegramBotApi: adapters.adapters.telegramBotApi,
+        telegramProvisioningService,
         trustedChannelIngressDispatcher,
       }),
+      telegramProvisioningService,
       webControlPlaneService: createWebControlPlaneService({
         analyticsQueryService,
         credentialLifecycleService,
         logger: options.loggerFactory.createLogger({ service: 'web_control_plane' }),
         repositories: adapters.adapters.repositories,
         repositoryConfig,
+        telegramProvisioningService,
       }),
     },
   };

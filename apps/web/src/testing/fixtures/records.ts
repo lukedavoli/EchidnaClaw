@@ -1,6 +1,7 @@
 import {
   adminAgentDetailSchema,
   adminAgentSummarySchema,
+  adminTelegramProvisioningHandoffSchema,
   agentSchema,
   analyticsOverviewSchema,
   channelSchema,
@@ -8,6 +9,7 @@ import {
   usageEventSchema,
   type AdminAgentDetail,
   type AdminAgentSummary,
+  type AdminTelegramProvisioningHandoff,
   type Agent,
   type AnalyticsOverview,
   type Channel,
@@ -141,6 +143,32 @@ export function createAdminAgentDetailFixture(input?: {
   primaryChannel?: Partial<Channel> | null;
 }): AdminAgentDetail {
   return adminAgentDetailSchema.parse(createAdminAgentSummaryFixture(input));
+}
+
+export function createTelegramProvisioningHandoffFixture(
+  overrides: Partial<AdminTelegramProvisioningHandoff> = {},
+): AdminTelegramProvisioningHandoff {
+  return adminTelegramProvisioningHandoffSchema.parse({
+    agentId: 'agt_fixture-agent',
+    attemptNumber: 1,
+    bootstrapCode: null,
+    bootstrapExpiresAt: null,
+    botDisplayName: null,
+    botHandle: null,
+    channelId: 'chn_fixture-agent',
+    instructions: [
+      'Create a Telegram bot in BotFather or choose an existing bot.',
+      'Paste the bot token here so the platform can verify it and configure the webhook.',
+    ],
+    lastErrorCode: null,
+    lastErrorMessage: null,
+    openTelegramUrl: null,
+    operatorActionUrl: 'https://t.me/BotFather',
+    provider: 'telegram',
+    requiresBotToken: true,
+    state: 'pending_operator_action',
+    ...overrides,
+  });
 }
 
 export function createUsageEventFixture(overrides: Partial<UsageEvent> = {}): UsageEvent {

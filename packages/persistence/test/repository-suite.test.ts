@@ -32,6 +32,7 @@ import {
   createSchedule,
   createTask,
   createTaskEnvelope,
+  createTelegramProvisioningSession,
   createUsageEvent,
   createWorkingContext,
 } from '../src/index.js';
@@ -744,6 +745,71 @@ describe('repository suite contracts', () => {
     });
 
     expect(await repositories.credentials.decryptCredential('agt_persistence', 'crd_persistence')).toBeNull();
+  });
+
+  it('stores Telegram provisioning attempts and can read the latest session by agent or channel', async () => {
+    const { repositories } = createTestSuite();
+    await repositories.agents.create(createAgent());
+    await repositories.channels.create(createChannel());
+
+    const firstAttempt = await repositories.telegramProvisioningSessions.create(
+      createTelegramProvisioningSession({
+        failedAt: '2026-04-12T00:05:00.000Z',
+        lastErrorCode: 'telegram_invalid_bot_token',
+        lastErrorMessage: 'Telegram rejected the bot token.',
+        state: 'failed',
+        updatedAt: '2026-04-12T00:05:00.000Z',
+      }),
+    );
+    await repositories.telegramProvisioningSessions.create(
+      createTelegramProvisioningSession({
+        id: 'tps_persistence-2',
+        attemptNumber: 2,
+        bootstrapCode: 'bootstrap-2',
+        bootstrapExpiresAt: '2026-04-12T00:30:00.000Z',
+        botDisplayName: 'Provisioned Bot',
+        botHandle: 'provisioned-bot',
+        botUserId: 'bot-2',
+        state: 'awaiting_operator_binding',
+        tokenVerifiedAt: '2026-04-12T00:10:00.000Z',
+        updatedAt: '2026-04-12T00:10:00.000Z',
+        webhookConfiguredAt: '2026-04-12T00:10:00.000Z',
+        webhookUrl: 'https://api.example.test/api/channels/telegram/chn_persistence/webhook',
+      }),
+    );
+
+    const latestByAgent = await repositories.telegramProvisioningSessions.getLatestByAgent(
+      'agt_persistence',
+    );
+    const latestByChannel = await repositories.telegramProvisioningSessions.getLatestByChannel(
+      'chn_persistence',
+    );
+    const activeByChannel = await repositories.telegramProvisioningSessions.getActiveByChannel(
+      'chn_persistence',
+    );
+
+    expect(firstAttempt.value.attemptNumber).toBe(1);
+    expect(latestByAgent?.value.attemptNumber).toBe(2);
+    expect(latestByChannel?.value.botHandle).toBe('provisioned-bot');
+    expect(activeByChannel?.value.state).toBe('awaiting_operator_binding');
+
+    const replaced = await repositories.telegramProvisioningSessions.replace(
+      {
+        ...activeByChannel!.value,
+        bindingInboundMessageId: 'inm_persistence',
+        boundExternalChatId: 'chat-123',
+        boundTrustedExternalUserId: 'user-123',
+        completedAt: '2026-04-12T00:12:00.000Z',
+        state: 'completed',
+        updatedAt: '2026-04-12T00:12:00.000Z',
+      },
+      activeByChannel!.etag,
+    );
+
+    expect(replaced.value.state).toBe('completed');
+    expect(
+      await repositories.telegramProvisioningSessions.getActiveByChannel('chn_persistence'),
+    ).toBeNull();
   });
 
   it('materializes schedules idempotently and supports the remaining repository surfaces', async () => {

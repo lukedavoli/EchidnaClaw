@@ -8,6 +8,9 @@ export const agentsApi = {
   createAgent(input: CreateAgentInput) {
     return webApiClient.createAgent(input);
   },
+  getTelegramProvisioningHandoff(agentId: string) {
+    return webApiClient.getTelegramProvisioningHandoff(agentId);
+  },
   getReadiness() {
     return webApiClient.getReadiness();
   },
@@ -16,6 +19,9 @@ export const agentsApi = {
   },
   retryAgentProvisioning(agentId: string) {
     return webApiClient.retryAgentProvisioning(agentId);
+  },
+  submitTelegramBotToken(agentId: string, input: { botToken: string }) {
+    return webApiClient.submitTelegramBotToken(agentId, input);
   },
   restoreAgent(agentId: string) {
     return webApiClient.restoreAgent(agentId);

@@ -62,7 +62,15 @@ async function startTelegramStub(options: {
     body: unknown;
     statusCode: number;
   };
+  getMeResponse?: {
+    body: unknown;
+    statusCode: number;
+  };
   sendMessageResponse?: {
+    body: unknown;
+    statusCode: number;
+  };
+  setWebhookResponse?: {
     body: unknown;
     statusCode: number;
   };
@@ -103,6 +111,24 @@ async function startTelegramStub(options: {
       },
       statusCode: 200,
     };
+    const getMeResponse = options.getMeResponse ?? {
+      body: {
+        ok: true,
+        result: {
+          first_name: 'Ops Bot',
+          id: 321,
+          username: 'ops-triage-bot',
+        },
+      },
+      statusCode: 200,
+    };
+    const setWebhookResponse = options.setWebhookResponse ?? {
+      body: {
+        ok: true,
+        result: true,
+      },
+      statusCode: 200,
+    };
 
     if (request.url?.endsWith('/sendMessage')) {
       response.writeHead(sendMessageResponse.statusCode, {
@@ -117,6 +143,22 @@ async function startTelegramStub(options: {
         'content-type': 'application/json',
       });
       response.end(JSON.stringify(answerCallbackResponse.body));
+      return;
+    }
+
+    if (request.url?.endsWith('/getMe')) {
+      response.writeHead(getMeResponse.statusCode, {
+        'content-type': 'application/json',
+      });
+      response.end(JSON.stringify(getMeResponse.body));
+      return;
+    }
+
+    if (request.url?.endsWith('/setWebhook')) {
+      response.writeHead(setWebhookResponse.statusCode, {
+        'content-type': 'application/json',
+      });
+      response.end(JSON.stringify(setWebhookResponse.body));
       return;
     }
 
@@ -189,7 +231,7 @@ async function seedActiveTelegramChannel(
     const credential = await repositories.credentials.createCredential({
       credentialRef: createCredentialRef({
         agentId,
-        alias: 'telegram-bot',
+        alias: 'telegram-bot-token',
         id: 'crd_test-telegram-bot',
         provider: 'telegram',
       }),
@@ -781,6 +823,312 @@ describe('Telegram channel adapter', () => {
 
     expect(response.statusCode).toBe(200);
     expect(telegram.requests.find((request) => request.url?.endsWith('/answerCallbackQuery'))).toBeUndefined();
+  });
+
+  it('provisions a Telegram bot through the admin handoff route and completes the bootstrap bind', async () => {
+    const telegram = await startTelegramStub();
+    const app = buildApiServer(
+      createTestApiConfig({
+        publicBaseUrl: 'https://api.example.test',
+        telegram: {
+          apiBaseUrl: telegram.baseUrl,
+        },
+      }),
+    );
+    apps.push(app);
+
+    const created = await app.inject({
+      method: 'POST',
+      payload: {
+        correlation: {
+          idempotencyKey: 'idem_step20-create',
+          traceId: 'trc_step20-create',
+        },
+        name: 'Step 20 Agent',
+      },
+      url: '/api/admin/agents',
+    });
+
+    expect(created.statusCode).toBe(201);
+    const createdBody = created.json();
+    const agentId = createdBody.agent.id as string;
+    const channelId = createdBody.primaryChannel.id as string;
+
+    const initialHandoff = await app.inject({
+      method: 'GET',
+      url: `/api/admin/agents/${agentId}/telegram-provisioning`,
+    });
+
+    expect(initialHandoff.statusCode).toBe(200);
+    expect(initialHandoff.json()).toMatchObject({
+      agentId,
+      channelId,
+      provider: 'telegram',
+      requiresBotToken: true,
+      state: 'pending_operator_action',
+    });
+
+    const tokenSubmission = await app.inject({
+      method: 'POST',
+      payload: {
+        botToken: 'telegram-token-step20',
+        correlation: {
+          idempotencyKey: 'idem_step20-token',
+          traceId: 'trc_step20-token',
+        },
+      },
+      url: `/api/admin/agents/${agentId}/telegram-provisioning/token`,
+    });
+
+    expect(tokenSubmission.statusCode).toBe(200);
+    const handoff = tokenSubmission.json();
+    expect(handoff).toMatchObject({
+      agentId,
+      botDisplayName: 'Ops Bot',
+      botHandle: 'ops-triage-bot',
+      channelId,
+      provider: 'telegram',
+      requiresBotToken: false,
+      state: 'awaiting_operator_binding',
+    });
+    expect(handoff.bootstrapCode).toEqual(expect.any(String));
+    expect(handoff.openTelegramUrl).toContain('https://t.me/ops-triage-bot?start=');
+    expect(telegram.requests.find((request) => request.url?.endsWith('/getMe'))?.body).toEqual({});
+    expect(telegram.requests.find((request) => request.url?.endsWith('/setWebhook'))?.body).toEqual({
+      secret_token: 'local-telegram-webhook-token',
+      url: `https://api.example.test/api/channels/telegram/${channelId}/webhook`,
+    });
+
+    const bootstrapWebhook = await app.inject({
+      headers: createWebhookHeaders(app),
+      method: 'POST',
+      payload: {
+        message: {
+          chat: {
+            id: 'chat-step20',
+            type: 'private',
+          },
+          from: {
+            first_name: 'Step Twenty',
+            id: 'user-step20',
+            username: 'step20-user',
+          },
+          message_id: 150,
+          text: `/start ${handoff.bootstrapCode}`,
+        },
+        update_id: 2201,
+      },
+      url: `/api/channels/telegram/${channelId}/webhook`,
+    });
+
+    expect(bootstrapWebhook.statusCode).toBe(200);
+
+    const agentDetail = await app.inject({
+      method: 'GET',
+      url: `/api/admin/agents/${agentId}`,
+    });
+
+    expect(agentDetail.statusCode).toBe(200);
+    expect(agentDetail.json()).toMatchObject({
+      agent: {
+        provisioningState: 'active',
+      },
+      primaryChannel: {
+        botDisplayName: 'Ops Bot',
+        botUserId: '321',
+        externalChatId: 'chat-step20',
+        externalHandle: 'ops-triage-bot',
+        state: 'active',
+      },
+    });
+
+    const completedHandoff = await app.inject({
+      method: 'GET',
+      url: `/api/admin/agents/${agentId}/telegram-provisioning`,
+    });
+
+    expect(completedHandoff.statusCode).toBe(200);
+    expect(completedHandoff.json()).toMatchObject({
+      agentId,
+      channelId,
+      provider: 'telegram',
+      requiresBotToken: false,
+      state: 'completed',
+    });
+  });
+
+  it('records invalid Telegram bot tokens as failed provisioning attempts and supports retry handoff rotation', async () => {
+    const telegram = await startTelegramStub({
+      getMeResponse: {
+        body: {
+          description: 'Unauthorized',
+          ok: false,
+        },
+        statusCode: 400,
+      },
+    });
+    const app = buildApiServer(
+      createTestApiConfig({
+        telegram: {
+          apiBaseUrl: telegram.baseUrl,
+        },
+      }),
+    );
+    apps.push(app);
+
+    const created = await app.inject({
+      method: 'POST',
+      payload: {
+        correlation: {
+          idempotencyKey: 'idem_step20-invalid-create',
+          traceId: 'trc_step20-invalid-create',
+        },
+        name: 'Invalid Token Agent',
+      },
+      url: '/api/admin/agents',
+    });
+
+    const agentId = created.json().agent.id as string;
+
+    const invalidToken = await app.inject({
+      method: 'POST',
+      payload: {
+        botToken: 'bad-token',
+        correlation: {
+          idempotencyKey: 'idem_step20-invalid-token',
+          traceId: 'trc_step20-invalid-token',
+        },
+      },
+      url: `/api/admin/agents/${agentId}/telegram-provisioning/token`,
+    });
+
+    expect(invalidToken.statusCode).toBe(400);
+    expect(invalidToken.json().error.code).toBe('validation_failed');
+
+    const failedHandoff = await app.inject({
+      method: 'GET',
+      url: `/api/admin/agents/${agentId}/telegram-provisioning`,
+    });
+
+    expect(failedHandoff.statusCode).toBe(200);
+    expect(failedHandoff.json()).toMatchObject({
+      agentId,
+      lastErrorCode: 'telegram_token_invalid',
+      requiresBotToken: true,
+      state: 'failed',
+    });
+
+    const retried = await app.inject({
+      method: 'POST',
+      payload: {
+        correlation: {
+          idempotencyKey: 'idem_step20-invalid-retry',
+          traceId: 'trc_step20-invalid-retry',
+        },
+      },
+      url: `/api/admin/agents/${agentId}/provisioning/retry`,
+    });
+
+    expect(retried.statusCode).toBe(200);
+
+    const retriedHandoff = await app.inject({
+      method: 'GET',
+      url: `/api/admin/agents/${agentId}/telegram-provisioning`,
+    });
+
+    expect(retriedHandoff.statusCode).toBe(200);
+    expect(retriedHandoff.json()).toMatchObject({
+      agentId,
+      attemptNumber: 2,
+      requiresBotToken: true,
+      state: 'pending_operator_action',
+    });
+  });
+
+  it('expires bootstrap codes on webhook receipt and keeps the channel inactive until retry', async () => {
+    const telegram = await startTelegramStub();
+    const app = buildApiServer(
+      createTestApiConfig({
+        publicBaseUrl: 'https://api.example.test',
+        telegram: {
+          apiBaseUrl: telegram.baseUrl,
+        },
+      }),
+    );
+    apps.push(app);
+
+    const created = await app.inject({
+      method: 'POST',
+      payload: {
+        correlation: {
+          idempotencyKey: 'idem_step20-expire-create',
+          traceId: 'trc_step20-expire-create',
+        },
+        name: 'Expired Bootstrap Agent',
+      },
+      url: '/api/admin/agents',
+    });
+
+    const agentId = created.json().agent.id as string;
+    const channelId = created.json().primaryChannel.id as string;
+    const tokenSubmission = await app.inject({
+      method: 'POST',
+      payload: {
+        botToken: 'telegram-token-expire',
+        correlation: {
+          idempotencyKey: 'idem_step20-expire-token',
+          traceId: 'trc_step20-expire-token',
+        },
+      },
+      url: `/api/admin/agents/${agentId}/telegram-provisioning/token`,
+    });
+
+    const handoff = tokenSubmission.json();
+    const session = await app.dependencies.adapters.repositories.telegramProvisioningSessions.getLatestByAgent(
+      agentId,
+    );
+    await app.dependencies.adapters.repositories.telegramProvisioningSessions.replace(
+      {
+        ...session!.value,
+        bootstrapExpiresAt: '2026-04-13T00:00:00.000Z',
+      },
+      session!.etag,
+    );
+
+    const expiredWebhook = await app.inject({
+      headers: createWebhookHeaders(app),
+      method: 'POST',
+      payload: {
+        message: {
+          chat: {
+            id: 'chat-expired',
+            type: 'private',
+          },
+          from: {
+            first_name: 'Expired',
+            id: 'user-expired',
+          },
+          message_id: 151,
+          text: `/start ${handoff.bootstrapCode}`,
+        },
+        update_id: 2202,
+      },
+      url: `/api/channels/telegram/${channelId}/webhook`,
+    });
+
+    expect(expiredWebhook.statusCode).toBe(200);
+
+    const failedHandoff = await app.inject({
+      method: 'GET',
+      url: `/api/admin/agents/${agentId}/telegram-provisioning`,
+    });
+
+    expect(failedHandoff.statusCode).toBe(200);
+    expect(failedHandoff.json()).toMatchObject({
+      agentId,
+      lastErrorCode: 'telegram_bootstrap_expired',
+      state: 'failed',
+    });
   });
 
   it('sends outbound messages through the bound Telegram bot and persists the sent state', async () => {

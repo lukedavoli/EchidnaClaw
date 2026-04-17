@@ -16,6 +16,7 @@ import type {
   ApprovalCallbackService,
   OutboundMessagingService,
   TelegramIngressService,
+  TelegramProvisioningService,
 } from '../services/channel/contracts.js';
 import type { TaskQueueService } from '../services/runtime/task-queue-service.js';
 
@@ -28,6 +29,7 @@ export type ApiServices = {
   schedulerRuntimeService: SchedulerService;
   taskQueueService: TaskQueueService;
   telegramIngressService: TelegramIngressService;
+  telegramProvisioningService: TelegramProvisioningService;
   webControlPlaneService: WebControlPlaneService;
 };
 
