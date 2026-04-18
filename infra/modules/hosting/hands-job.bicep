@@ -25,6 +25,7 @@ param applicationInsightsConnectionString string
 param foundryProjectName string
 param foundryEndpoint string
 param defaultModelDeploymentName string
+param apiPublicBaseUrl string
 param sandboxBaseUrl string
 param secretReferences array = []
 
@@ -88,6 +89,10 @@ var envVars = [
   {
     name: 'ECHIDNA_FOUNDRY_DEFAULT_DEPLOYMENT_NAME'
     value: defaultModelDeploymentName
+  }
+  {
+    name: 'ECHIDNA_API_PUBLIC_BASE_URL'
+    value: apiPublicBaseUrl
   }
   {
     name: 'ECHIDNA_SANDBOX_BASE_URL'

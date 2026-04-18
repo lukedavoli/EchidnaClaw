@@ -18,19 +18,19 @@ param keyVaultKeyName = 'key-credential-prd'
 
 param images = {
   api: {
-    repository: 'echidna/api'
+    repository: 'echidna-claw/api'
     tag: 'prd'
   }
   hands: {
-    repository: 'echidna/hands'
+    repository: 'echidna-claw/hands'
     tag: 'prd'
   }
   sandbox: {
-    repository: 'echidna/sandbox'
+    repository: 'echidna-claw/sandbox'
     tag: 'prd'
   }
   scheduler: {
-    repository: 'echidna/hands'
+    repository: 'echidna-claw/scheduler'
     tag: 'prd'
   }
 }
@@ -72,7 +72,7 @@ param schedulerJobConfig = {
   scheduleExpression: '*/5 * * * *'
   command: [
     'node'
-    'dist/scheduler.js'
+    'apps/scheduler/dist/scheduler.js'
   ]
   args: []
 }

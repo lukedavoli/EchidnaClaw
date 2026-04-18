@@ -342,6 +342,7 @@ module handsJob '../modules/hosting/hands-job.bicep' = {
     foundryProjectName: foundryProjectName
     foundryEndpoint: foundryContract.outputs.endpoint
     defaultModelDeploymentName: foundryContract.outputs.defaultModelDeploymentName
+    apiPublicBaseUrl: apiApp.outputs.baseUrl
     sandboxBaseUrl: sandboxApp.outputs.internalUrl
     secretReferences: workloadBindings.hands
   }
@@ -378,6 +379,7 @@ module schedulerJob '../modules/hosting/scheduler-job.bicep' = {
     foundryProjectName: foundryProjectName
     foundryEndpoint: foundryContract.outputs.endpoint
     defaultModelDeploymentName: foundryContract.outputs.defaultModelDeploymentName
+    apiPublicBaseUrl: apiApp.outputs.baseUrl
     sandboxBaseUrl: sandboxApp.outputs.internalUrl
     secretReferences: workloadBindings.scheduler
   }
