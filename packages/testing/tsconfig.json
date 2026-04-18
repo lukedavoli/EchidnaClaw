@@ -6,6 +6,20 @@
     "outDir": "./dist",
     "tsBuildInfoFile": "./.tsbuildinfo"
   },
+  "references": [
+    {
+      "path": "../config"
+    },
+    {
+      "path": "../contracts"
+    },
+    {
+      "path": "../observability"
+    },
+    {
+      "path": "../persistence"
+    }
+  ],
   "include": [
     "src/**/*.ts"
   ],
@@ -14,4 +28,3 @@
     "node_modules"
   ]
 }
-

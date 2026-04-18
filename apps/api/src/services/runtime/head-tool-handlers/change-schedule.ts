@@ -8,8 +8,6 @@ import {
   type HeadTurn,
 } from '@echidna-claw/contracts';
 
-import type { ScheduleMutationService } from '../schedule-mutation-service.js';
-
 const recurrenceSchema = z
   .object({
     anchorAt: isoDateTimeSchema.optional(),
@@ -108,8 +106,31 @@ function stripUndefined<T extends Record<string, unknown>>(value: T): T {
 export async function handleChangeSchedule(input: {
   args: unknown;
   headTurn: HeadTurn;
-  scheduleMutationService: ScheduleMutationService;
 }): Promise<{
+  deferredDirectives: [
+    {
+      kind: 'schedule_change';
+      request: {
+        action: 'create' | 'delete' | 'pause' | 'resume' | 'update';
+        agentId: string;
+        correlation: HeadTurn['correlation'];
+        description?: string;
+        naturalLanguageRequest?: string;
+        recurrence?: {
+          anchorAt?: string;
+          frequency?: 'hourly' | 'daily' | 'weekly';
+          interval?: number;
+          localTime?: string;
+          timeZone?: string;
+          weekdays?: Array<
+            'friday' | 'monday' | 'saturday' | 'sunday' | 'thursday' | 'tuesday' | 'wednesday'
+          >;
+        };
+        scheduleId?: string;
+        skipMissedOccurrencesOnRestore?: boolean;
+      };
+    },
+  ];
   effectSummaryPatch: {
     scheduleChangeRequested: true;
   };
@@ -126,25 +147,29 @@ export async function handleChangeSchedule(input: {
         ...(args.recurrence.weekdays ? { weekdays: args.recurrence.weekdays } : {}),
       })
     : undefined;
-  const result = await input.scheduleMutationService.mutate({
-    action: args.action,
-    agentId: input.headTurn.agentId,
-    correlation: input.headTurn.correlation,
-    ...(args.description ? { description: args.description } : {}),
-    ...(args.naturalLanguageRequest
-      ? { naturalLanguageRequest: args.naturalLanguageRequest }
-      : {}),
-    ...(recurrence ? { recurrence } : {}),
-    ...(args.scheduleId ? { scheduleId: args.scheduleId } : {}),
-    ...(args.skipMissedOccurrencesOnRestore != null
-      ? { skipMissedOccurrencesOnRestore: args.skipMissedOccurrencesOnRestore }
-      : {}),
-  });
-
   return {
+    deferredDirectives: [
+      {
+        kind: 'schedule_change',
+        request: {
+          action: args.action,
+          agentId: input.headTurn.agentId,
+          correlation: input.headTurn.correlation,
+          ...(args.description ? { description: args.description } : {}),
+          ...(args.naturalLanguageRequest
+            ? { naturalLanguageRequest: args.naturalLanguageRequest }
+            : {}),
+          ...(recurrence ? { recurrence } : {}),
+          ...(args.scheduleId ? { scheduleId: args.scheduleId } : {}),
+          ...(args.skipMissedOccurrencesOnRestore != null
+            ? { skipMissedOccurrencesOnRestore: args.skipMissedOccurrencesOnRestore }
+            : {}),
+        },
+      },
+    ],
     effectSummaryPatch: {
       scheduleChangeRequested: true,
     },
-    outputText: result.outputText,
+    outputText: 'Schedule change staged and will be applied if this turn remains current.',
   };
 }

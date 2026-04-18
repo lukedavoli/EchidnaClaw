@@ -19,5 +19,11 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@echidna-claw/config": "workspace:*",
+    "@echidna-claw/contracts": "workspace:*",
+    "@echidna-claw/observability": "workspace:*",
+    "@echidna-claw/persistence": "workspace:*"
   }
 }

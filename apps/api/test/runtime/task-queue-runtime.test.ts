@@ -327,7 +327,7 @@ describe('task queue runtime integration', () => {
     });
 
     expect(result.effectSummary.taskRequested).toBe(true);
-    expect(result.replyDraft?.body.text).toContain('created new task');
+    expect(result.replyDraft?.body.text).toContain('Queued task request staged');
     expect(services.startRunCalls).toHaveLength(1);
 
     const openTasks = await services.repositories.tasks.listOpenTasks(seeded.agentId);
@@ -399,7 +399,7 @@ describe('task queue runtime integration', () => {
 
     const openTasks = await services.repositories.tasks.listOpenTasks(seededTwo.agentId);
     expect(openTasks).toHaveLength(1);
-    expect(second.replyDraft?.body.text).toContain('merged into existing task');
+    expect(second.replyDraft?.body.text).toContain('Queued task request staged');
   });
 
   it('returns queued task and journal summaries through read_status', async () => {
