@@ -114,6 +114,78 @@ function collectDeferredMemoryWrites(
     .map((directive) => directive.candidate);
 }
 
+async function applyDeferredSideEffects(input: {
+  approvalLifecycleService: ApprovalLifecycleService;
+  credentialLifecycleService: CredentialLifecycleService;
+  directives: readonly DeferredHeadDirective[];
+  scheduleMutationService: ScheduleMutationService;
+  taskQueueService: TaskQueueService;
+}): Promise<void> {
+  for (const directive of input.directives) {
+    switch (directive.kind) {
+      case 'memory_write':
+        break;
+      case 'task_request':
+        if (directive.request.mode === 'activate_deferred_task' && directive.request.taskId) {
+          await input.taskQueueService.activateDeferredTask({
+            ...directive.request.request,
+            taskId: directive.request.taskId,
+          });
+          break;
+        }
+
+        await input.taskQueueService.enqueueTask(directive.request.request);
+        break;
+      case 'approval_request':
+        await input.approvalLifecycleService.requestApproval({
+          ...(directive.request.actionFingerprint
+            ? { actionFingerprint: directive.request.actionFingerprint }
+            : {}),
+          agentId: directive.request.agentId,
+          blocking: directive.request.blocking,
+          category: directive.request.category,
+          channelId: directive.request.channelId,
+          correlation: directive.request.correlation,
+          ...(directive.request.expiresAt ? { expiresAt: directive.request.expiresAt } : {}),
+          summary: directive.request.summary,
+          taskId: directive.request.taskId,
+        });
+        break;
+      case 'credential_request':
+        await input.credentialLifecycleService.requestCapture({
+          agentId: directive.request.agentId,
+          channelId: directive.request.channelId,
+          correlation: directive.request.correlation,
+          ...(directive.request.reason ? { reason: directive.request.reason } : {}),
+          serviceAlias: directive.request.serviceAlias,
+          taskId: directive.request.taskId,
+        });
+        break;
+      case 'schedule_change':
+        await input.scheduleMutationService.mutate({
+          action: directive.request.action,
+          agentId: directive.request.agentId,
+          correlation: directive.request.correlation,
+          ...(directive.request.description ? { description: directive.request.description } : {}),
+          ...(directive.request.naturalLanguageRequest
+            ? { naturalLanguageRequest: directive.request.naturalLanguageRequest }
+            : {}),
+          ...(directive.request.recurrence ? { recurrence: directive.request.recurrence } : {}),
+          ...(directive.request.scheduleId ? { scheduleId: directive.request.scheduleId } : {}),
+          ...(directive.request.skipMissedOccurrencesOnRestore != null
+            ? {
+                skipMissedOccurrencesOnRestore:
+                  directive.request.skipMissedOccurrencesOnRestore,
+              }
+            : {}),
+        });
+        break;
+      default:
+        directive satisfies never;
+    }
+  }
+}
+
 function createWorkingContextRecord(input: {
   agentId: string;
   correlation: HeadStartTurnRequest['correlation'];
@@ -1258,17 +1330,36 @@ export function createHeadRuntimeService(options: {
           });
         }
 
+        await applyDeferredSideEffects({
+          approvalLifecycleService: options.approvalLifecycleService,
+          credentialLifecycleService: options.credentialLifecycleService,
+          directives: runtimeResult.deferredDirectives,
+          scheduleMutationService: options.scheduleMutationService,
+          taskQueueService: options.taskQueueService,
+        });
+
+        const committableHeadTurn = await loadHeadTurnForAgent({
+          agentId: storedAgent.value.id,
+          headTurnId: createdHeadTurn.value.id,
+          repositories: options.repositories,
+        });
+        const committableWorkingContext = await resolveCurrentWorkingContext({
+          correlation: input.correlation,
+          repositories: options.repositories,
+          startedAt: now(),
+          storedAgent,
+        });
         const completedAt = now();
         const reconciledWorkingContext =
           input.trigger.kind === 'due_task'
             ? await reconcileDueTaskBeforeCommit({
                 completedAt,
-                dueAt: latestHeadTurn.value.dueAt,
+                dueAt: committableHeadTurn.value.dueAt,
                 repositories: options.repositories,
-                taskId: latestHeadTurn.value.taskId,
-                workingContext: latestWorkingContext,
+                taskId: committableHeadTurn.value.taskId,
+                workingContext: committableWorkingContext,
               })
-            : latestWorkingContext;
+            : committableWorkingContext;
         const summarySnapshot =
           input.trigger.kind === 'trusted_messages'
             ? await options.workingContextSummaryService.refreshAfterTrustedTurn({
@@ -1293,12 +1384,12 @@ export function createHeadRuntimeService(options: {
           completedAt,
           conversationCursor: runtimeResult.conversationCursor,
           incrementEpisodeTurnCount: true,
-          readThroughSequence: latestHeadTurn.value.readThroughMessageSequence,
+          readThroughSequence: committableHeadTurn.value.readThroughMessageSequence,
           workingContext: reconciledWorkingContext.value,
         });
         const finalizedTurn = await options.repositories.execution.finalizeHeadTurn({
           headTurn: {
-            ...latestHeadTurn.value,
+            ...committableHeadTurn.value,
             updatedAt: completedAt,
             completedAt,
             staleCheckedAt,
@@ -1312,7 +1403,7 @@ export function createHeadRuntimeService(options: {
             failureCode: undefined,
             failureMessage: undefined,
           },
-          headTurnEtag: latestHeadTurn.etag,
+          headTurnEtag: committableHeadTurn.etag,
           workingContext: finalizedWorkingContext,
           workingContextEtag: reconciledWorkingContext.etag,
         });

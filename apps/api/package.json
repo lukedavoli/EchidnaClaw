@@ -22,6 +22,7 @@
     "@echidna-claw/observability": "workspace:*",
     "@echidna-claw/persistence": "workspace:*",
     "@echidna-claw/prompting": "workspace:*",
+    "@echidna-claw/testing": "workspace:*",
     "fastify": "^5.2.1",
     "openai": "^6.34.0",
     "zod": "^3.24.2"

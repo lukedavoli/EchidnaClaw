@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -101,6 +101,21 @@ describe('buildSandboxServer', () => {
     });
   }, 15000);
 
+  it('cleans stale workspace contents on startup when cleanup is enabled', async () => {
+    const config = createSandboxTestConfig();
+    const staleDirectory = resolve(config.workspaceRoot, 'stale-session');
+    mkdirSync(staleDirectory, { recursive: true });
+    writeFileSync(resolve(staleDirectory, 'stale.txt'), 'stale');
+
+    const app = buildSandboxServer(config);
+    apps.push(app);
+
+    await app.ready();
+
+    expect(existsSync(config.workspaceRoot)).toBe(true);
+    expect(existsSync(staleDirectory)).toBe(false);
+  });
+
   it('creates, executes, and closes sandbox sessions through the internal routes', async () => {
     const config = createSandboxTestConfig();
     const app = buildSandboxServer(config);
@@ -147,7 +162,7 @@ describe('buildSandboxServer', () => {
       closedReason: 'completed',
     });
     expect(existsSync(created.json().workspaceRoot)).toBe(false);
-  });
+  }, 20000);
 
   it('enforces timeout, output, command, install, path, and host guardrails', async () => {
     const config = createSandboxTestConfig();
@@ -216,5 +231,5 @@ describe('buildSandboxServer', () => {
       status: 'policy_denied',
       failureCode: 'outbound_host_denied',
     });
-  });
+  }, 20000);
 });

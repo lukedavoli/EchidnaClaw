@@ -1,4 +1,10 @@
-import type { CorrelationMetadata, HeadEffectSummary, HeadTurnCompletionKind } from '@echidna-claw/contracts';
+import type {
+  ApprovalCategory,
+  CorrelationMetadata,
+  EnqueueTaskRequest,
+  HeadEffectSummary,
+  HeadTurnCompletionKind,
+} from '@echidna-claw/contracts';
 import type { HeadPromptAssembly } from '@echidna-claw/prompting';
 
 export type NormalizedProviderUsage = {
@@ -46,10 +52,73 @@ export type MemoryWriteCandidate = {
   text: string;
 };
 
+export type DeferredTaskDirectiveRequest = {
+  mode: 'activate_deferred_task' | 'enqueue_task';
+  request: EnqueueTaskRequest;
+  taskId: string | null;
+};
+
+export type DeferredApprovalDirectiveRequest = {
+  actionFingerprint?: string;
+  agentId: string;
+  blocking: boolean;
+  category: ApprovalCategory;
+  channelId: string;
+  correlation: CorrelationMetadata;
+  expiresAt: string | null;
+  summary: string;
+  taskId: string;
+};
+
+export type DeferredCredentialDirectiveRequest = {
+  agentId: string;
+  channelId: string;
+  correlation: CorrelationMetadata;
+  reason?: string;
+  serviceAlias: string;
+  taskId: string | null;
+};
+
+export type DeferredScheduleDirectiveRequest = {
+  action: 'create' | 'delete' | 'pause' | 'resume' | 'update';
+  agentId: string;
+  correlation: CorrelationMetadata;
+  description?: string;
+  naturalLanguageRequest?: string;
+  recurrence?: {
+    anchorAt?: string;
+    frequency?: 'hourly' | 'daily' | 'weekly';
+    interval?: number;
+    localTime?: string;
+    timeZone?: string;
+    weekdays?: Array<
+      'friday' | 'monday' | 'saturday' | 'sunday' | 'thursday' | 'tuesday' | 'wednesday'
+    >;
+  };
+  scheduleId?: string;
+  skipMissedOccurrencesOnRestore?: boolean;
+};
+
 export type DeferredHeadDirective =
   | {
       kind: 'memory_write';
       candidate: MemoryWriteCandidate;
+    }
+  | {
+      kind: 'task_request';
+      request: DeferredTaskDirectiveRequest;
+    }
+  | {
+      kind: 'approval_request';
+      request: DeferredApprovalDirectiveRequest;
+    }
+  | {
+      kind: 'credential_request';
+      request: DeferredCredentialDirectiveRequest;
+    }
+  | {
+      kind: 'schedule_change';
+      request: DeferredScheduleDirectiveRequest;
     };
 
 export interface MemoryStoreAdapter {

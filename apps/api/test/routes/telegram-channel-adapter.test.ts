@@ -1,12 +1,10 @@
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
-
 import { channelSchema } from '@echidna-claw/contracts';
 import {
   createDeterministicOutboundMessageId,
   createInboundMessageIdempotencyKey,
   encodeTelegramCallbackData,
 } from '@echidna-claw/domain';
+import { startTelegramStub } from '@echidna-claw/testing';
 import {
   createApproval,
   createAgent,
@@ -26,158 +24,12 @@ import {
 import { createTestApiConfig } from '../../src/testing/fixtures/api-config.js';
 
 const apps: Array<ReturnType<typeof buildApiServer>> = [];
-const servers: Server[] = [];
+const telegramStubs: Array<Awaited<ReturnType<typeof startTelegramStub>>> = [];
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
-  await Promise.all(
-    servers.splice(0).map(
-      (server) =>
-        new Promise<void>((resolve, reject) => {
-          server.close((error) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-
-            resolve();
-          });
-        }),
-    ),
-  );
+  await Promise.all(telegramStubs.splice(0).map((stub) => stub.close()));
 });
-
-async function readJson(request: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-
-  const raw = Buffer.concat(chunks).toString('utf8');
-  return raw.length > 0 ? JSON.parse(raw) : null;
-}
-
-async function startTelegramStub(options: {
-  answerCallbackResponse?: {
-    body: unknown;
-    statusCode: number;
-  };
-  getMeResponse?: {
-    body: unknown;
-    statusCode: number;
-  };
-  sendMessageResponse?: {
-    body: unknown;
-    statusCode: number;
-  };
-  setWebhookResponse?: {
-    body: unknown;
-    statusCode: number;
-  };
-} = {}): Promise<{
-  baseUrl: string;
-  requests: Array<{
-    body: unknown;
-    method?: string;
-    url?: string;
-  }>;
-}> {
-  const requests: Array<{
-    body: unknown;
-    method?: string;
-    url?: string;
-  }> = [];
-  const server = createServer(async (request: IncomingMessage, response: ServerResponse) => {
-    const body = await readJson(request);
-    requests.push({
-      body,
-      method: request.method,
-      url: request.url,
-    });
-
-    const sendMessageResponse = options.sendMessageResponse ?? {
-      body: {
-        ok: true,
-        result: {
-          message_id: 999,
-        },
-      },
-      statusCode: 200,
-    };
-    const answerCallbackResponse = options.answerCallbackResponse ?? {
-      body: {
-        ok: true,
-        result: true,
-      },
-      statusCode: 200,
-    };
-    const getMeResponse = options.getMeResponse ?? {
-      body: {
-        ok: true,
-        result: {
-          first_name: 'Ops Bot',
-          id: 321,
-          username: 'ops-triage-bot',
-        },
-      },
-      statusCode: 200,
-    };
-    const setWebhookResponse = options.setWebhookResponse ?? {
-      body: {
-        ok: true,
-        result: true,
-      },
-      statusCode: 200,
-    };
-
-    if (request.url?.endsWith('/sendMessage')) {
-      response.writeHead(sendMessageResponse.statusCode, {
-        'content-type': 'application/json',
-      });
-      response.end(JSON.stringify(sendMessageResponse.body));
-      return;
-    }
-
-    if (request.url?.endsWith('/answerCallbackQuery')) {
-      response.writeHead(answerCallbackResponse.statusCode, {
-        'content-type': 'application/json',
-      });
-      response.end(JSON.stringify(answerCallbackResponse.body));
-      return;
-    }
-
-    if (request.url?.endsWith('/getMe')) {
-      response.writeHead(getMeResponse.statusCode, {
-        'content-type': 'application/json',
-      });
-      response.end(JSON.stringify(getMeResponse.body));
-      return;
-    }
-
-    if (request.url?.endsWith('/setWebhook')) {
-      response.writeHead(setWebhookResponse.statusCode, {
-        'content-type': 'application/json',
-      });
-      response.end(JSON.stringify(setWebhookResponse.body));
-      return;
-    }
-
-    response.writeHead(404, {
-      'content-type': 'application/json',
-    });
-    response.end(JSON.stringify({ ok: false, description: 'Not found' }));
-  });
-
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', () => resolve());
-  });
-  servers.push(server);
-
-  return {
-    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    requests,
-  };
-}
 
 async function seedActiveTelegramChannel(
   app: ReturnType<typeof buildApiServer>,
@@ -433,6 +285,7 @@ describe('Telegram channel adapter', () => {
 
   it('coalesces rapid trusted messages into one Head turn when debounce is enabled', async () => {
     const telegram = await startTelegramStub();
+    telegramStubs.push(telegram);
     const logs: Array<{ message: string }> = [];
     const app = buildApiServer(
       createTestApiConfig({
@@ -519,6 +372,7 @@ describe('Telegram channel adapter', () => {
 
   it('suppresses stale replies when a newer trusted message supersedes an in-flight Head turn', async () => {
     const telegram = await startTelegramStub();
+    telegramStubs.push(telegram);
     const logs: Array<{ message: string }> = [];
     const app = buildApiServer(
       createTestApiConfig({
@@ -686,6 +540,7 @@ describe('Telegram channel adapter', () => {
 
   it('decodes callback actions and acknowledges Telegram callback queries through the bot API', async () => {
     const telegram = await startTelegramStub();
+    telegramStubs.push(telegram);
     const logs: Array<{ message: string }> = [];
     const app = buildApiServer(
       createTestApiConfig({
@@ -769,6 +624,7 @@ describe('Telegram channel adapter', () => {
 
   it('keeps callback webhooks successful when Telegram credential decryption fails', async () => {
     const telegram = await startTelegramStub();
+    telegramStubs.push(telegram);
     const app = buildApiServer(
       createTestApiConfig({
         telegram: {
@@ -827,6 +683,7 @@ describe('Telegram channel adapter', () => {
 
   it('provisions a Telegram bot through the admin handoff route and completes the bootstrap bind', async () => {
     const telegram = await startTelegramStub();
+    telegramStubs.push(telegram);
     const app = buildApiServer(
       createTestApiConfig({
         publicBaseUrl: 'https://api.example.test',
@@ -967,6 +824,7 @@ describe('Telegram channel adapter', () => {
         statusCode: 400,
       },
     });
+    telegramStubs.push(telegram);
     const app = buildApiServer(
       createTestApiConfig({
         telegram: {
@@ -1047,6 +905,7 @@ describe('Telegram channel adapter', () => {
 
   it('expires bootstrap codes on webhook receipt and keeps the channel inactive until retry', async () => {
     const telegram = await startTelegramStub();
+    telegramStubs.push(telegram);
     const app = buildApiServer(
       createTestApiConfig({
         publicBaseUrl: 'https://api.example.test',
@@ -1133,6 +992,7 @@ describe('Telegram channel adapter', () => {
 
   it('sends outbound messages through the bound Telegram bot and persists the sent state', async () => {
     const telegram = await startTelegramStub();
+    telegramStubs.push(telegram);
     const app = buildApiServer(
       createTestApiConfig({
         telegram: {
@@ -1249,6 +1109,7 @@ describe('Telegram channel adapter', () => {
         statusCode: 403,
       },
     });
+    telegramStubs.push(telegram);
     const app = buildApiServer(
       createTestApiConfig({
         telegram: {

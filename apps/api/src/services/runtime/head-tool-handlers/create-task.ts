@@ -1,14 +1,13 @@
 import { z } from 'zod';
 
 import type {
+  EnqueueTaskRequest,
   HeadTurn,
   QueueLane,
   RequestedBy,
   WorkingContext,
 } from '@echidna-claw/contracts';
 import { isoDateTimeSchema, queuePrioritySchema } from '@echidna-claw/contracts';
-
-import type { TaskQueueService } from '../task-queue-service.js';
 
 const createTaskArgsSchema = z
   .object({
@@ -58,32 +57,21 @@ function getQueueLane(headTurn: HeadTurn): QueueLane {
   return 'system';
 }
 
-function formatLaunchSummary(result: Awaited<ReturnType<TaskQueueService['enqueueTask']>>): string {
-  if (result.taskState === 'deferred') {
-    return 'The task is waiting until its due time; no Hands startup request was issued.';
-  }
-
-  if (!result.startRequest) {
-    return 'No Hands startup request was issued.';
-  }
-
-  if (result.startRequest.adapterAccepted) {
-    return result.startRequest.replayed
-      ? 'Hands startup was already requested for this envelope.'
-      : 'Hands startup was requested.';
-  }
-
-  return result.startRequest.errorMessage
-    ? `Hands startup is pending later runtime support: ${result.startRequest.errorMessage}`
-    : 'Hands startup is pending later runtime support.';
-}
-
 export async function handleCreateTask(input: {
   args: unknown;
   headTurn: HeadTurn;
-  taskQueueService: TaskQueueService;
   workingContext: WorkingContext;
 }): Promise<{
+  deferredDirectives: [
+    {
+      kind: 'task_request';
+      request: {
+        mode: 'activate_deferred_task' | 'enqueue_task';
+        request: EnqueueTaskRequest;
+        taskId: string | null;
+      };
+    },
+  ];
   effectSummaryPatch: {
     taskRequested: true;
   };
@@ -92,7 +80,7 @@ export async function handleCreateTask(input: {
   const args = createTaskArgsSchema.parse(input.args);
   const dueAt = args.dueAt ?? null;
   const requestedAt = new Date().toISOString();
-  const request = {
+  const request: EnqueueTaskRequest = {
     agentId: input.headTurn.agentId,
     correlation: {
       ...input.headTurn.correlation,
@@ -111,23 +99,32 @@ export async function handleCreateTask(input: {
     workingContextId: input.workingContext.id,
     workingContextSummary: input.workingContext.summary,
   };
-  const result =
+  const mode =
     dueAt == null || dueAt > requestedAt
-      ? await input.taskQueueService.enqueueTask(request)
+      ? 'enqueue_task'
       : input.headTurn.triggerKind === 'due_task' && input.headTurn.taskId
-        ? await input.taskQueueService.activateDeferredTask({
-            ...request,
-            taskId: input.headTurn.taskId,
-          })
-        : await input.taskQueueService.enqueueTask(request);
+        ? 'activate_deferred_task'
+        : 'enqueue_task';
 
   return {
+    deferredDirectives: [
+      {
+        kind: 'task_request',
+        request: {
+          mode,
+          request,
+          taskId: mode === 'activate_deferred_task' ? input.headTurn.taskId : null,
+        },
+      },
+    ],
     effectSummaryPatch: {
       taskRequested: true,
     },
-    outputText: [
-      `Task ${result.taskId} ${result.disposition.replaceAll('_', ' ')} as ${result.taskState}.`,
-      formatLaunchSummary(result),
-    ].join(' '),
+    outputText:
+      mode === 'activate_deferred_task'
+        ? 'Deferred task activation staged and will be applied if this turn remains current.'
+        : dueAt != null && dueAt > requestedAt
+          ? 'Deferred task request staged and will remain pending until its due time if this turn remains current.'
+          : 'Queued task request staged and Hands startup will be requested if this turn remains current.',
   };
 }

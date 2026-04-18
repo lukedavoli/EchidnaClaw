@@ -49,3 +49,45 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  compose-smoke:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start packaged compose stack
+        run: docker compose up -d --build
+
+      - name: Smoke packaged services
+        env:
+          ECHIDNA_HANDS_LIVENESS_FILE: .compose/hands/hands-liveness.json
+          ECHIDNA_SMOKE_TARGET: local
+          VITE_APP_BASE_URL: http://127.0.0.1:4173
+        run: pnpm dev:smoke --local
+
+      - name: Validate scheduler routing in the packaged stack
+        run: docker compose run --rm scheduler
+
+      - name: Tear down compose stack
+        if: ${{ always() }}
+        run: docker compose down --remove-orphans --volumes

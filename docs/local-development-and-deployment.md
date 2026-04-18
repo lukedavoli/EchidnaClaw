@@ -13,7 +13,8 @@ The repository loads root `.env` and `.env.local` files through `@echidna-claw/c
 ## Command Surface
 
 - `pnpm dev` starts the local process loop for `apps/web`, `apps/api`, `apps/hands`, and `apps/sandbox`.
-- `pnpm dev:smoke` verifies the local stack shape after startup.
+- `pnpm dev:smoke --local` verifies the local or Compose-backed stack shape after startup.
+- `pnpm dev:smoke --deployed` verifies a deployed environment by using `ECHIDNA_WEB_PUBLIC_BASE_URL`, `ECHIDNA_API_PUBLIC_BASE_URL`, and `ECHIDNA_SANDBOX_BASE_URL` when present.
 - `pnpm verify` runs lint, typecheck, tests, and builds.
 - `pnpm docker:build` builds the four deployable images with deterministic tags.
 - `pnpm compose:up` starts the Compose integration stack.
@@ -70,11 +71,27 @@ Developer-provided values belong in `.env.local`. Pipeline-provided values shoul
 ## CI And Deployment Workflows
 
 - `.github/workflows/ci.yml` runs on pushes to `feature/*`, pushes to `main`, and pull requests targeting `main`.
+- The CI workflow now also starts the packaged Compose stack, runs `pnpm dev:smoke --local`, and executes the scheduler container once to validate branch builds against the packaged service topology.
 - `.github/workflows/build-and-package.yml` centralizes image build and optional publish behavior.
 - `.github/workflows/deploy-feature.yml` maps `feature/*` pushes to the `development` GitHub environment.
 - `.github/workflows/deploy-main.yml` maps `main` pushes to the `production` GitHub environment.
 
 Image publishing remains conditional. If registry settings or credentials are absent, the deployment workflows stop after packaging and leave a stub message for the later Step 3 infrastructure hookup.
+
+## Smoke Check Modes
+
+- Local process loop: `pnpm dev:smoke --local`
+- Compose stack: `VITE_APP_BASE_URL=http://127.0.0.1:4173 pnpm dev:smoke --local`
+- Deployed environment: `pnpm dev:smoke --deployed`
+
+Deployed smoke checks require:
+
+- `ECHIDNA_WEB_PUBLIC_BASE_URL`
+- `ECHIDNA_API_PUBLIC_BASE_URL`
+- `ECHIDNA_SANDBOX_BASE_URL` if sandbox health and sandbox execution should be checked
+- `ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN` if sandbox execution should be checked
+
+If only public health endpoints are available, set `ECHIDNA_SMOKE_SKIP_SANDBOX_EXEC=true` and run the deployed smoke in health-only mode.
 
 ## Branch Protection Expectations
 

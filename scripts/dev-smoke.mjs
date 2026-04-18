@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { config as loadDotenv } from 'dotenv';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const args = new Set(process.argv.slice(2));
 
 for (const fileName of ['.env', '.env.local']) {
   const filePath = resolve(repoRoot, fileName);
@@ -16,6 +17,11 @@ for (const fileName of ['.env', '.env.local']) {
   }
 }
 
+const smokeTarget = args.has('--deployed')
+  ? 'deployed'
+  : args.has('--local')
+    ? 'local'
+    : (process.env.ECHIDNA_SMOKE_TARGET ?? 'local');
 const apiHost = process.env.ECHIDNA_API_HOST ?? '127.0.0.1';
 const apiPort = process.env.ECHIDNA_API_PORT ?? '3001';
 const sandboxHost = process.env.ECHIDNA_SANDBOX_HOST ?? '127.0.0.1';
@@ -23,10 +29,15 @@ const sandboxPort = process.env.ECHIDNA_SANDBOX_PORT ?? '3002';
 const internalRuntimeAuthToken =
   process.env.ECHIDNA_INTERNAL_RUNTIME_AUTH_TOKEN ?? 'local-internal-runtime-token';
 const webUrl = process.env.VITE_APP_BASE_URL ?? 'http://127.0.0.1:5173';
+const deployedWebUrl = process.env.ECHIDNA_WEB_PUBLIC_BASE_URL?.trim();
+const deployedApiBaseUrl = process.env.ECHIDNA_API_PUBLIC_BASE_URL?.trim();
+const deployedSandboxBaseUrl = process.env.ECHIDNA_SANDBOX_BASE_URL?.trim();
 const heartbeatIntervalMs = Number.parseInt(
   process.env.ECHIDNA_HANDS_HEARTBEAT_INTERVAL_MS ?? '30000',
   10,
 );
+const skipSandboxExec =
+  args.has('--skip-sandbox-exec') || process.env.ECHIDNA_SMOKE_SKIP_SANDBOX_EXEC === 'true';
 const configuredHandsLivenessFile = process.env.ECHIDNA_HANDS_LIVENESS_FILE?.trim();
 const handsLivenessCandidates = configuredHandsLivenessFile
   ? [
@@ -38,6 +49,18 @@ const handsLivenessCandidates = configuredHandsLivenessFile
       resolve(tmpdir(), 'echidna-claw', 'hands-liveness.json'),
       resolve(repoRoot, '.compose', 'hands', 'hands-liveness.json'),
     ];
+
+function ensureAbsoluteBaseUrl(value, label) {
+  try {
+    return new URL(value).toString();
+  } catch {
+    throw new Error(`${label} must be set to an absolute URL`);
+  }
+}
+
+function joinUrl(baseUrl, path) {
+  return new URL(path, `${baseUrl.replace(/\/$/, '')}/`).toString();
+}
 
 async function fetchOk(url, label, expectJson = false) {
   const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
@@ -70,14 +93,13 @@ async function fetchJson(url, init, label) {
   return response.json();
 }
 
-async function runSandboxSmoke() {
-  const sandboxBaseUrl = `http://${sandboxHost}:${sandboxPort}`;
+async function runSandboxSmoke(options) {
   const headers = {
     'content-type': 'application/json',
     'x-echidna-internal-token': internalRuntimeAuthToken,
   };
   const created = await fetchJson(
-    `${sandboxBaseUrl}/internal/sessions`,
+    joinUrl(options.sandboxBaseUrl, '/internal/sessions'),
     {
       method: 'POST',
       headers,
@@ -98,7 +120,7 @@ async function runSandboxSmoke() {
     'sandbox create-session smoke',
   );
   const command = await fetchJson(
-    `${sandboxBaseUrl}/internal/sessions/${created.id}/commands`,
+    joinUrl(options.sandboxBaseUrl, `/internal/sessions/${created.id}/commands`),
     {
       method: 'POST',
       headers,
@@ -118,7 +140,7 @@ async function runSandboxSmoke() {
   }
 
   await fetchJson(
-    `${sandboxBaseUrl}/internal/sessions/${created.id}/close`,
+    joinUrl(options.sandboxBaseUrl, `/internal/sessions/${created.id}/close`),
     {
       method: 'POST',
       headers,
@@ -157,14 +179,61 @@ function assertHandsHeartbeat() {
   }
 }
 
-try {
+async function runLocalSmoke() {
+  const apiBaseUrl = `http://${apiHost}:${apiPort}`;
+  const sandboxBaseUrl = `http://${sandboxHost}:${sandboxPort}`;
+
   await fetchOk(webUrl, 'web');
-  await fetchOk(`http://${apiHost}:${apiPort}/healthz`, 'api', true);
-  await fetchOk(`http://${sandboxHost}:${sandboxPort}/healthz`, 'sandbox', true);
-  await runSandboxSmoke();
+  await fetchOk(joinUrl(apiBaseUrl, '/healthz'), 'api', true);
+  await fetchOk(joinUrl(sandboxBaseUrl, '/healthz'), 'sandbox', true);
+  if (!skipSandboxExec) {
+    await runSandboxSmoke({ sandboxBaseUrl });
+  }
   assertHandsHeartbeat();
 
-  console.log('Smoke checks passed for web, api, sandbox, sandbox execution, and hands.');
+  return skipSandboxExec
+    ? 'Smoke checks passed for web, api, sandbox health, and hands.'
+    : 'Smoke checks passed for web, api, sandbox, sandbox execution, and hands.';
+}
+
+async function runDeployedSmoke() {
+  if (!deployedWebUrl) {
+    throw new Error('ECHIDNA_WEB_PUBLIC_BASE_URL is required for deployed smoke checks');
+  }
+  if (!deployedApiBaseUrl) {
+    throw new Error('ECHIDNA_API_PUBLIC_BASE_URL is required for deployed smoke checks');
+  }
+
+  const webBaseUrl = ensureAbsoluteBaseUrl(deployedWebUrl, 'ECHIDNA_WEB_PUBLIC_BASE_URL');
+  const apiBaseUrl = ensureAbsoluteBaseUrl(deployedApiBaseUrl, 'ECHIDNA_API_PUBLIC_BASE_URL');
+  const sandboxBaseUrl = deployedSandboxBaseUrl
+    ? ensureAbsoluteBaseUrl(deployedSandboxBaseUrl, 'ECHIDNA_SANDBOX_BASE_URL')
+    : null;
+
+  await fetchOk(webBaseUrl, 'web');
+  await fetchOk(joinUrl(apiBaseUrl, '/healthz'), 'api', true);
+
+  const completedChecks = ['web', 'api'];
+  if (sandboxBaseUrl) {
+    await fetchOk(joinUrl(sandboxBaseUrl, '/healthz'), 'sandbox', true);
+    completedChecks.push('sandbox');
+
+    if (!skipSandboxExec) {
+      await runSandboxSmoke({ sandboxBaseUrl });
+      completedChecks.push('sandbox execution');
+    }
+  }
+
+  return `Smoke checks passed for ${completedChecks.join(', ')}.`;
+}
+
+try {
+  if (!['deployed', 'local'].includes(smokeTarget)) {
+    throw new Error(`Unsupported smoke target '${smokeTarget}'. Use 'local' or 'deployed'.`);
+  }
+
+  const summary = smokeTarget === 'deployed' ? await runDeployedSmoke() : await runLocalSmoke();
+  console.log(summary);
 } catch (error) {
   console.error('Smoke checks failed.');
   console.error(error instanceof Error ? error.message : error);

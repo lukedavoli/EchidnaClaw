@@ -152,7 +152,6 @@ export function createHeadToolCatalog(input: {
         handleCreateTask({
           args,
           headTurn: input.headTurn,
-          taskQueueService: input.taskQueueService,
           workingContext: input.workingContext,
         }),
       inputSchema: {
@@ -176,7 +175,6 @@ export function createHeadToolCatalog(input: {
         handleChangeSchedule({
           args,
           headTurn: input.headTurn,
-          scheduleMutationService: input.scheduleMutationService,
         }),
       inputSchema: changeScheduleToolInputSchema,
       name: 'change_schedule',
@@ -186,7 +184,6 @@ export function createHeadToolCatalog(input: {
       enabled: true,
       execute: async (args) =>
         handleRequestApproval({
-          approvalLifecycleService: input.approvalLifecycleService,
           args,
           channelId: input.channel.id,
           headTurn: input.headTurn,
@@ -216,7 +213,6 @@ export function createHeadToolCatalog(input: {
         handleRequestCredential({
           args,
           channelId: input.channel.id,
-          credentialLifecycleService: input.credentialLifecycleService,
           headTurn: input.headTurn,
         }),
       inputSchema: {

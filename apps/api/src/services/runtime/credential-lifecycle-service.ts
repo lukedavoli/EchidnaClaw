@@ -18,7 +18,6 @@ import {
   createSandboxCredentialBindings,
   resetTaskLaunchState,
   resolveCredentialService,
-  resolveCredentialServiceByProviderAlias,
   transitionTaskState,
   withTaskProgressSummary,
 } from '@echidna-claw/domain';

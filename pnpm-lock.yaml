@@ -95,6 +95,9 @@ importers:
       '@echidna-claw/prompting':
         specifier: workspace:*
         version: link:../../packages/prompting
+      '@echidna-claw/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       '@fastify/cors':
         specifier: ^11.1.0
         version: 11.2.0
@@ -128,6 +131,9 @@ importers:
       '@echidna-claw/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence
+      '@echidna-claw/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       fastify:
         specifier: ^5.2.1
         version: 5.8.4
@@ -295,7 +301,20 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/testing: {}
+  packages/testing:
+    dependencies:
+      '@echidna-claw/config':
+        specifier: workspace:*
+        version: link:../config
+      '@echidna-claw/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@echidna-claw/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@echidna-claw/persistence':
+        specifier: workspace:*
+        version: link:../persistence
 
 packages:
 
